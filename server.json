@@ -1,9 +1,9 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.eternaut1/ironflow",
+  "name": "io.github.ironflowsh/mcp",
   "description": "Tick-level Hyperliquid market data for AI agents — fills, L4 orderbook, funding rates, mark prices, open interest, liquidations, plus wallet/cohort analytics, smart triggers, and per-market status across 750+ markets (native perps, HIP-3, HIP-4 prediction contracts, spot). Free tier: 24h history with no card.",
   "repository": {
-    "url": "https://github.com/eternaut1/ironflow-mcp",
+    "url": "https://github.com/ironflowsh/mcp",
     "source": "github"
   },
   "version": "0.4.1",

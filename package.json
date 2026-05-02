@@ -1,17 +1,17 @@
 {
   "name": "@ironflowsh/mcp",
   "version": "0.4.1",
-  "mcpName": "io.github.eternaut1/ironflow",
+  "mcpName": "io.github.ironflowsh/mcp",
   "description": "MCP server for Ironflow market data — real-time and historical on-chain derivatives data for AI agents",
   "author": "Ironflow <hello@ironflow.sh>",
   "homepage": "https://docs.ironflow.sh/guides/ai-agents",
   "repository": {
     "type": "git",
-    "url": "https://github.com/eternaut1/ironflow-mcp.git"
+    "url": "https://github.com/ironflowsh/mcp.git"
   },
   "bugs": {
     "email": "support@ironflow.sh",
-    "url": "https://github.com/eternaut1/ironflow-mcp/issues"
+    "url": "https://github.com/ironflowsh/mcp/issues"
   },
   "type": "module",
   "bin": {
