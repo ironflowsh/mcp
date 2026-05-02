@@ -1,0 +1,60 @@
+{
+  "name": "@ironflowsh/mcp",
+  "version": "0.4.1",
+  "mcpName": "io.github.eternaut1/ironflow",
+  "description": "MCP server for Ironflow market data — real-time and historical on-chain derivatives data for AI agents",
+  "author": "Ironflow <hello@ironflow.sh>",
+  "homepage": "https://docs.ironflow.sh/guides/ai-agents",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/eternaut1/ironflow-mcp.git"
+  },
+  "bugs": {
+    "email": "support@ironflow.sh",
+    "url": "https://github.com/eternaut1/ironflow-mcp/issues"
+  },
+  "type": "module",
+  "bin": {
+    "ironflow-mcp": "./build/index.js"
+  },
+  "scripts": {
+    "build": "tsc && chmod 755 build/index.js",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "prepublishOnly": "rm -rf build && npm run build"
+  },
+  "files": [
+    "build",
+    "!build/**/*.test.js",
+    "!build/**/*.test.d.ts",
+    "!build/**/*.test.js.map",
+    "!build/**/*.test.d.ts.map",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "ironflow",
+    "market-data",
+    "crypto",
+    "crypto-mcp",
+    "defi",
+    "defi-mcp",
+    "perpetuals",
+    "hyperliquid",
+    "hyperliquid-mcp",
+    "trading-mcp",
+    "claude-mcp",
+    "ai-agents"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.17",
+    "typescript": "5.9.3",
+    "vitest": "4.1.0"
+  }
+}

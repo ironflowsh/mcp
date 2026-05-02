@@ -1,0 +1,29 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.eternaut1/ironflow",
+  "description": "Tick-level Hyperliquid market data for AI agents — fills, L4 orderbook, funding rates, mark prices, open interest, liquidations, plus wallet/cohort analytics, smart triggers, and per-market status across 750+ markets (native perps, HIP-3, HIP-4 prediction contracts, spot). Free tier: 24h history with no card.",
+  "repository": {
+    "url": "https://docs.ironflow.sh/guides/ai-agents",
+    "source": "github"
+  },
+  "version": "0.4.1",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "@ironflowsh/mcp",
+      "version": "0.4.1",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "description": "Ironflow API key. Create one at https://ironflow.sh/dashboard/login (free tier covers 24h of history with no credit card).",
+          "isRequired": true,
+          "format": "string",
+          "isSecret": true,
+          "name": "IRONFLOW_API_KEY"
+        }
+      ]
+    }
+  ]
+}
