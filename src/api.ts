@@ -7,21 +7,24 @@ export class IronflowAPI {
   private baseUrl: string;
   private apiKey?: string;
   private source: string;
+  private userAgent: string;
 
   constructor(
     baseUrl = DEFAULT_BASE_URL,
     apiKey?: string,
-    source = DEFAULT_SOURCE
+    source = DEFAULT_SOURCE,
+    version = "unknown"
   ) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
     this.apiKey = apiKey;
     this.source = source;
+    this.userAgent = `ironflow-mcp/${version}`;
   }
 
   private headers(): Record<string, string> {
     const h: Record<string, string> = {
       "Content-Type": "application/json",
-      "User-Agent": "ironflow-mcp/0.4.2",
+      "User-Agent": this.userAgent,
     };
     if (this.apiKey) {
       h["Authorization"] = `Bearer ${this.apiKey}`;

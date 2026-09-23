@@ -1,6 +1,6 @@
 {
   "name": "@ironflowsh/mcp",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "mcpName": "io.github.ironflowsh/mcp",
   "description": "Read-only Hyperliquid market data and wallet analytics MCP server for Claude, Cursor and AI agents",
   "author": "Ironflow <hello@ironflow.sh>",

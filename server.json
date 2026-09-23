@@ -6,19 +6,19 @@
     "url": "https://github.com/ironflowsh/mcp",
     "source": "github"
   },
-  "version": "0.7.0",
+  "version": "0.7.1",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@ironflowsh/mcp",
-      "version": "0.7.0",
+      "version": "0.7.1",
       "transport": {
         "type": "stdio"
       },
       "environmentVariables": [
         {
-          "description": "Ironflow API key. Request one at https://ironflow.sh/api",
-          "isRequired": true,
+          "description": "Optional Ironflow API key. Keyless calls get 10 requests per minute; a free key from https://ironflow.sh/key gives 60.",
+          "isRequired": false,
           "format": "string",
           "isSecret": true,
           "name": "IRONFLOW_API_KEY"

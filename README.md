@@ -2,7 +2,7 @@
 
 MCP server for [Ironflow](https://ironflow.sh): read-only Hyperliquid market data and wallet analytics for Claude Desktop, Cursor and any MCP client. It covers native perps, HIP-3 builder markets, HIP-4 outcome markets and spot. 30 tools, all read-only.
 
-An API key is required. Request one at [ironflow.sh/api](https://ironflow.sh/api).
+No API key needed to start: keyless calls get 10 requests per minute and 24 hours of history. A free key from [ironflow.sh/key](https://ironflow.sh/key) raises that to 60 requests per minute and 30 days.
 
 ## Example questions
 
@@ -31,16 +31,20 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
   "mcpServers": {
     "ironflow": {
       "command": "npx",
-      "args": ["-y", "@ironflowsh/mcp"],
-      "env": { "IRONFLOW_API_KEY": "if_your_api_key" }
+      "args": ["-y", "@ironflowsh/mcp"]
     }
   }
 }
 ```
 
+To use a key in Claude Desktop or Cursor, add `"env": { "IRONFLOW_API_KEY": "if_your_api_key" }` to the server block.
+
 ## Claude Code
 
 ```bash
+claude mcp add ironflow -- npx -y @ironflowsh/mcp
+
+# with a free key
 claude mcp add ironflow -e IRONFLOW_API_KEY=if_your_api_key -- npx -y @ironflowsh/mcp
 ```
 
@@ -66,7 +70,7 @@ Fill history covers a rolling 12 months. There is no order book, order status or
 
 | Env var | Default |
 |---|---|
-| `IRONFLOW_API_KEY` | required |
+| `IRONFLOW_API_KEY` | optional; free key at [ironflow.sh/key](https://ironflow.sh/key) |
 | `IRONFLOW_API_URL` | `https://api.ironflow.sh` |
 
 ## Links

@@ -5,8 +5,8 @@
 // Usage:
 //   IRONFLOW_API_KEY=if_xxx npx -y @ironflowsh/mcp
 //
-// Every data tool needs an API key (request one at https://ironflow.sh/api).
-// Without one only the status tools answer; the rest return 401.
+// The key is optional: keyless calls get 10 requests per minute and 24 hours
+// of history; a free key from https://ironflow.sh/key gives 60 and 30 days.
 
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -27,11 +27,9 @@ const apiKey = process.env.IRONFLOW_API_KEY;
 if (!apiKey) {
   // stderr: stdout carries the MCP protocol.
   console.error(
-    "IRONFLOW_API_KEY is not set. Only the status tools will work. Request a key at https://ironflow.sh/api",
+    "IRONFLOW_API_KEY is not set: running keyless (10 requests per minute, 24 hours of history). Free key for more: https://ironflow.sh/key",
   );
 }
-
-const api = new IronflowAPI(apiUrl, apiKey);
 
 // Read the package version from package.json so MCP clients see the
 // real installed version in serverInfo, not a hardcoded constant that
@@ -45,6 +43,8 @@ try {
   // Fall through with "unknown" — the server still functions; only
   // the version string in initialize() is affected.
 }
+
+const api = new IronflowAPI(apiUrl, apiKey, undefined, pkgVersion);
 
 const server = new Server(
   {
