@@ -21,7 +21,7 @@ export class IronflowAPI {
   private headers(): Record<string, string> {
     const h: Record<string, string> = {
       "Content-Type": "application/json",
-      "User-Agent": "ironflow-mcp/0.4.0",
+      "User-Agent": "ironflow-mcp/0.4.2",
     };
     if (this.apiKey) {
       h["Authorization"] = `Bearer ${this.apiKey}`;
@@ -73,46 +73,6 @@ export class IronflowAPI {
     return res.text();
   }
 
-  async post(path: string, body: unknown): Promise<unknown> {
-    const url = new URL(path, this.baseUrl);
-
-    const res = await fetch(url.toString(), {
-      method: "POST",
-      headers: this.headers(),
-      body: JSON.stringify(body),
-    });
-
-    if (!res.ok) {
-      throw await this.apiError(res);
-    }
-
-    return res.json();
-  }
-
-  async patch(path: string, body: unknown): Promise<unknown> {
-    const url = new URL(path, this.baseUrl);
-    const res = await fetch(url.toString(), {
-      method: "PATCH",
-      headers: this.headers(),
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      throw await this.apiError(res);
-    }
-    return res.json();
-  }
-
-  async delete(path: string): Promise<void> {
-    const url = new URL(path, this.baseUrl);
-    const res = await fetch(url.toString(), {
-      method: "DELETE",
-      headers: this.headers(),
-    });
-    if (!res.ok) {
-      throw await this.apiError(res);
-    }
-  }
-
   // ─── Convenience methods ──────────────────────────────────────────────
 
   async getPrice(market: string): Promise<string> {
@@ -124,10 +84,6 @@ export class IronflowAPI {
       throw new Error(`Market ${market} not found`);
     }
     return price;
-  }
-
-  async getOrderbook(market: string): Promise<unknown> {
-    return this.get("/v1/book", { market });
   }
 
   async getRecentTrades(
@@ -173,24 +129,6 @@ export class IronflowAPI {
     return this.get("/v1/mark-prices", { market, limit: "1" });
   }
 
-  async getDeposits(address: string = "", limit: string = "20"): Promise<unknown> {
-    const params: Record<string, string> = { limit };
-    if (address) params.address = address;
-    return this.get("/v1/deposits", params);
-  }
-
-  async getWithdrawals(address: string = "", limit: string = "20"): Promise<unknown> {
-    const params: Record<string, string> = { limit };
-    if (address) params.address = address;
-    return this.get("/v1/withdrawals", params);
-  }
-
-  async getOrderStatuses(address: string, market: string = "", limit: string = "20"): Promise<unknown> {
-    const params: Record<string, string> = { address, limit };
-    if (market) params.market = market;
-    return this.get("/v1/order-statuses", params);
-  }
-
   async getVaultOperations(vault: string = "", address: string = "", limit: string = "20"): Promise<unknown> {
     const params: Record<string, string> = { limit };
     if (vault) params.vault = vault;
@@ -222,26 +160,133 @@ export class IronflowAPI {
     return this.get("/v1/analytics/funding-stats", { market, interval, limit });
   }
 
-  // ─── Triggers ─────────────────────────────────────────────────────────
+  // ─── Per-address wallet analytics (v0.31.0+) ──────────────────────────
 
-  async listTriggers(): Promise<unknown> {
-    return this.get("/v1/triggers");
+  async getUserState(address: string): Promise<unknown> {
+    return this.get("/v1/analytics/user-state", { address });
   }
 
-  async createTrigger(body: unknown): Promise<unknown> {
-    return this.post("/v1/triggers", body);
+  async getUserFunding(
+    address: string,
+    market: string = "",
+    from: number = 0,
+    to: number = 0,
+    bucket: string = "1d",
+  ): Promise<unknown> {
+    const params: Record<string, string> = { address, bucket };
+    if (market) params.market = market;
+    if (from > 0) params.from = String(from);
+    if (to > 0) params.to = String(to);
+    return this.get("/v1/analytics/user-funding", params);
   }
 
-  async testTrigger(body: unknown): Promise<unknown> {
-    return this.post("/v1/triggers/test", body);
+  async getUserMakerTaker(
+    address: string,
+    market: string = "",
+    from: number = 0,
+    to: number = 0,
+  ): Promise<unknown> {
+    const params: Record<string, string> = { address };
+    if (market) params.market = market;
+    if (from > 0) params.from = String(from);
+    if (to > 0) params.to = String(to);
+    return this.get("/v1/analytics/user-maker-taker", params);
   }
 
-  async toggleTrigger(id: number, isActive: boolean): Promise<unknown> {
-    return this.patch(`/v1/triggers/${id}`, { is_active: isActive });
+  async getUserLedger(
+    address: string,
+    from: number = 0,
+    to: number = 0,
+    eventTypes: string = "",
+    limit: number = 1000,
+  ): Promise<unknown> {
+    const params: Record<string, string> = { address, limit: String(limit) };
+    if (from > 0) params.from = String(from);
+    if (to > 0) params.to = String(to);
+    if (eventTypes) params.event_types = eventTypes;
+    return this.get("/v1/analytics/user-ledger", params);
   }
 
-  async deleteTrigger(id: number): Promise<void> {
-    await this.delete(`/v1/triggers/${id}`);
+  // ─── Cross-wallet ranking (v0.34+) ───────────────────────────────────
+
+  async getPnLLeaderboard(
+    from: number = 0,
+    to: number = 0,
+    limit: number = 50,
+    sortBy: string = "realized_pnl",
+  ): Promise<unknown> {
+    const params: Record<string, string> = {
+      limit: String(limit),
+      sort_by: sortBy,
+    };
+    if (from > 0) params.from = String(from);
+    if (to > 0) params.to = String(to);
+    return this.get("/v1/analytics/leaderboard-pnl", params);
+  }
+
+  async getMarketTopWallets(
+    market: string,
+    from: number = 0,
+    to: number = 0,
+    limit: number = 25,
+    sortBy: string = "volume",
+  ): Promise<unknown> {
+    const params: Record<string, string> = {
+      market,
+      limit: String(limit),
+      sort_by: sortBy,
+    };
+    if (from > 0) params.from = String(from);
+    if (to > 0) params.to = String(to);
+    return this.get("/v1/analytics/market-top-wallets", params);
+  }
+
+  async getMarketsSnapshot(
+    marketClass: string = "",
+    issuer: string = "",
+  ): Promise<unknown> {
+    const params: Record<string, string> = {};
+    if (marketClass) params.market_class = marketClass;
+    // The endpoint distinguishes "no filter" from "native-only" via
+    // presence of the `issuer` key; we forward only when caller asked
+    // for it explicitly (non-empty or the explicit empty-string
+    // sentinel handled below).
+    if (issuer) params.issuer = issuer;
+    return this.get("/v1/markets/snapshot", params);
+  }
+
+  async getUserSummary(
+    address: string,
+    from: number = 0,
+    to: number = 0,
+  ): Promise<unknown> {
+    const params: Record<string, string> = { address };
+    if (from > 0) params.from = String(from);
+    if (to > 0) params.to = String(to);
+    return this.get("/v1/analytics/user-summary", params);
+  }
+
+  async getUserPnLSeries(
+    address: string,
+    from: number = 0,
+    to: number = 0,
+    bucketMs: number = 0,
+  ): Promise<unknown> {
+    const params: Record<string, string> = { address };
+    if (from > 0) params.from = String(from);
+    if (to > 0) params.to = String(to);
+    if (bucketMs > 0) params.bucket_ms = String(bucketMs);
+    return this.get("/v1/analytics/user-pnl-series", params);
+  }
+
+  async getWalletLabels(
+    whaleTopN: number = 100,
+    smartTopN: number = 100,
+  ): Promise<unknown> {
+    return this.get("/v1/analytics/wallet-labels", {
+      whale_top_n: String(whaleTopN),
+      smart_top_n: String(smartTopN),
+    });
   }
 
   // ─── Cohorts ──────────────────────────────────────────────────────────
@@ -254,15 +299,7 @@ export class IronflowAPI {
     return this.get(`/v1/cohorts/${encodeURIComponent(name)}`);
   }
 
-  async deleteCohort(name: string): Promise<void> {
-    await this.delete(`/v1/cohorts/${encodeURIComponent(name)}`);
-  }
-
   // ─── Account & Status ────────────────────────────────────────────────
-
-  async getMe(): Promise<unknown> {
-    return this.get("/v1/me");
-  }
 
   async getStatus(): Promise<unknown> {
     return this.get("/v1/status");

@@ -43,74 +43,6 @@ function optionalString(args: Record<string, unknown>, key: string, defaultVal: 
   return val;
 }
 
-// Maximum byte length we accept for a JSON string argument from the agent.
-// Trigger rules and sample events are tiny (rarely > 1 KiB); 64 KiB is well
-// above any legitimate payload while still bounding parse-time memory.
-const MAX_JSON_ARG_BYTES = 64 * 1024;
-
-// Maximum nesting depth for parsed JSON. Defends against pathological
-// recursive structures the agent (or a malicious model output) might emit.
-const MAX_JSON_DEPTH = 16;
-
-/**
- * safeJSONParse parses a JSON string and refuses dangerous shapes:
- *
- *  - Strings larger than MAX_JSON_ARG_BYTES.
- *  - Any object key matching `__proto__`, `constructor`, or `prototype` —
- *    these would not enable prototype pollution against our own code (we
- *    don't deep-merge user input here) but they're a strong "this is an
- *    attack" signal worth refusing. Stripping them with a reviver yields
- *    an object that's safe to forward.
- *  - Nesting deeper than MAX_JSON_DEPTH.
- *
- * The result is a plain JSON value (object / array / primitive). Callers
- * still need to assert their domain shape before using the result.
- */
-function safeJSONParse(input: string, label: string): unknown {
-  if (input.length > MAX_JSON_ARG_BYTES) {
-    throw new Error(`"${label}" exceeds ${MAX_JSON_ARG_BYTES} bytes`);
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(input, (key, value) => {
-      if (key === "__proto__" || key === "constructor" || key === "prototype") {
-        // Drop the key by returning undefined.
-        return undefined;
-      }
-      return value;
-    });
-  } catch {
-    throw new Error(`"${label}" is not valid JSON`);
-  }
-  enforceDepth(parsed, MAX_JSON_DEPTH, label);
-  return parsed;
-}
-
-function enforceDepth(value: unknown, remaining: number, label: string): void {
-  if (remaining < 0) {
-    throw new Error(`"${label}" exceeds maximum nesting depth (${MAX_JSON_DEPTH})`);
-  }
-  if (Array.isArray(value)) {
-    for (const v of value) enforceDepth(v, remaining - 1, label);
-    return;
-  }
-  if (value !== null && typeof value === "object") {
-    for (const v of Object.values(value)) enforceDepth(v, remaining - 1, label);
-  }
-}
-
-/**
- * Light-touch validation for a trigger rule. The authoritative check lives
- * server-side; this just stops obviously malformed shapes from making the
- * round-trip and rejects payloads that could only be exploit attempts.
- */
-function validateRule(rule: unknown): Record<string, unknown> {
-  if (rule === null || typeof rule !== "object" || Array.isArray(rule)) {
-    throw new Error('"rule" must be a JSON object');
-  }
-  return rule as Record<string, unknown>;
-}
-
 // ─── Tools ──────────────────────────────────────────────────────────────────
 
 export const tools: ToolDef[] = [
@@ -128,22 +60,6 @@ export const tools: ToolDef[] = [
       const market = requireString(args, "market");
       const price = await api.getPrice(market);
       return `${market}: $${price}`;
-    },
-  },
-  {
-    name: "get_orderbook",
-    description: "Get the current L2 order book snapshot for a market, showing bid and ask price levels",
-    inputSchema: {
-      type: "object",
-      properties: {
-        market: { type: "string", description: 'Market symbol — native HL perp (e.g. "BTC-PERP", "ETH-PERP") or HIP-3 builder market namespaced as "<issuer>:<base>-PERP" (e.g. "flx:GAS-PERP", "xyz:NVDA-PERP")' },
-      },
-      required: ["market"],
-    },
-    handler: async (args, api) => {
-      const market = requireString(args, "market");
-      const data = await api.getOrderbook(market);
-      return JSON.stringify(data, null, 2);
     },
   },
   {
@@ -276,62 +192,6 @@ export const tools: ToolDef[] = [
     },
   },
   {
-    name: "get_deposits",
-    description: "Get recent deposit events for a wallet address",
-    inputSchema: {
-      type: "object",
-      properties: {
-        address: { type: "string", description: "Wallet address (e.g. 0x...)" },
-        limit: { type: "number", description: "Number of deposits (1-100, default 20)" },
-      },
-      required: ["address"],
-    },
-    handler: async (args, api) => {
-      const address = requireString(args, "address");
-      const limit = optionalNumber(args, "limit", 20);
-      const data = await api.getDeposits(address, String(limit));
-      return JSON.stringify(data, null, 2);
-    },
-  },
-  {
-    name: "get_withdrawals",
-    description: "Get recent withdrawal events for a wallet address",
-    inputSchema: {
-      type: "object",
-      properties: {
-        address: { type: "string", description: "Wallet address (e.g. 0x...)" },
-        limit: { type: "number", description: "Number of withdrawals (1-100, default 20)" },
-      },
-      required: ["address"],
-    },
-    handler: async (args, api) => {
-      const address = requireString(args, "address");
-      const limit = optionalNumber(args, "limit", 20);
-      const data = await api.getWithdrawals(address, String(limit));
-      return JSON.stringify(data, null, 2);
-    },
-  },
-  {
-    name: "get_order_statuses",
-    description: "Get order status history for a wallet address (placed, filled, cancelled, triggered)",
-    inputSchema: {
-      type: "object",
-      properties: {
-        address: { type: "string", description: "Wallet address (e.g. 0x...)" },
-        market: { type: "string", description: "Optional market filter" },
-        limit: { type: "number", description: "Number of statuses (1-100, default 20)" },
-      },
-      required: ["address"],
-    },
-    handler: async (args, api) => {
-      const address = requireString(args, "address");
-      const market = optionalString(args, "market", "");
-      const limit = optionalNumber(args, "limit", 20);
-      const data = await api.getOrderStatuses(address, market, String(limit));
-      return JSON.stringify(data, null, 2);
-    },
-  },
-  {
     name: "get_vault_operations",
     description: "Get vault deposit and withdrawal events, filterable by vault address or user address",
     inputSchema: {
@@ -443,128 +303,249 @@ export const tools: ToolDef[] = [
     },
   },
 
-  // ─── Export ───────────────────────────────────────────────────────────
-
+  // ─── Per-address wallet analytics (v0.31.0+) ─────────────────────────
+  //
+  // The four tools below mirror Hyperliquid's `/info` user-scoped
+  // surface (clearinghouseState, userFunding, userNonFundingLedgerUpdates)
+  // plus one that HL itself doesn't precompute — user_maker_taker. Each
+  // tool takes an `address` (0x-prefixed 20-byte hex) and returns a
+  // JSON object the agent can reason over.
   {
-    name: "export_data",
-    description: "Export historical data as CSV (Builder+ tier). Returns the download URL or raw data for a given event type and time range",
+    name: "get_user_state",
+    description: "Get an address's current open perp positions + unrealized P&L. Mirrors HL clearinghouseState — best tool for 'is this wallet long or short right now?' or 'what's their P&L?' questions.",
     inputSchema: {
       type: "object",
       properties: {
-        event_type: { type: "string", description: "Data type to export (trade, fill, book, liquidation, funding_rate, deposit, withdrawal, vault_operation, order_status, open_interest, mark_price)" },
-        market: { type: "string", description: 'Optional market filter — native HL (e.g. "BTC-PERP") or HIP-3 builder market "<issuer>:<base>-PERP" (e.g. "flx:GAS-PERP")' },
-        format: { type: "string", description: "Output format: csv or parquet. Default: csv", enum: ["csv", "parquet"] },
+        address: { type: "string", description: "0x-prefixed 20-byte hex address" },
       },
-      required: ["event_type"],
+      required: ["address"],
     },
     handler: async (args, api) => {
-      const eventType = requireString(args, "event_type");
+      const address = requireString(args, "address");
+      const data = await api.getUserState(address);
+      return JSON.stringify(data, null, 2);
+    },
+  },
+  {
+    name: "get_user_funding",
+    description: "Get funding payments per market per bucket for an address. Sign convention: positive = received, negative = paid. Use bucket=1d for daily roll-up, 1h for raw HL funding intervals.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        address: { type: "string", description: "0x-prefixed 20-byte hex address" },
+        market: { type: "string", description: "Optional market filter (e.g. BTC-PERP)" },
+        from: { type: "number", description: "Unix ms window start (inclusive)" },
+        to: { type: "number", description: "Unix ms window end (exclusive)" },
+        bucket: { type: "string", enum: ["1h", "1d", "raw"], description: "Aggregation bucket; default 1d" },
+      },
+      required: ["address"],
+    },
+    handler: async (args, api) => {
+      const address = requireString(args, "address");
       const market = optionalString(args, "market", "");
-      const format = optionalString(args, "format", "csv");
-      const params: Record<string, string> = { event_type: eventType, format };
-      if (market) params.market = market;
-      const data = await api.get("/v1/export", params);
-      return typeof data === "string" ? data : JSON.stringify(data, null, 2);
+      const from = optionalNumber(args, "from", 0);
+      const to = optionalNumber(args, "to", 0);
+      const bucket = optionalString(args, "bucket", "1d");
+      const data = await api.getUserFunding(address, market, from, to, bucket);
+      return JSON.stringify(data, null, 2);
+    },
+  },
+  {
+    name: "get_user_maker_taker",
+    description: "Get an address's maker vs taker fill breakdown per market over a time window. The single most diagnostic endpoint for market-maker analysis — no commercial provider exposes this precomputed. High maker share with negative maker_fee = classic MM (rebate income); high taker share = liquidity taker. Caveat: fills before 2026-05-21 default to maker until S3 backfill.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        address: { type: "string", description: "0x-prefixed 20-byte hex address" },
+        market: { type: "string", description: "Optional market filter" },
+        from: { type: "number", description: "Unix ms window start" },
+        to: { type: "number", description: "Unix ms window end" },
+      },
+      required: ["address"],
+    },
+    handler: async (args, api) => {
+      const address = requireString(args, "address");
+      const market = optionalString(args, "market", "");
+      const from = optionalNumber(args, "from", 0);
+      const to = optionalNumber(args, "to", 0);
+      const data = await api.getUserMakerTaker(address, market, from, to);
+      return JSON.stringify(data, null, 2);
+    },
+  },
+  {
+    name: "get_user_ledger",
+    description: "Get non-fill ledger events for an address: deposits, withdrawals, vault operations. Sign convention on amount: positive = into account, negative = out. Phase b will add rewardsClaim (airdrops), spotTransfer, delegate/undelegate (HYPE staking).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        address: { type: "string", description: "0x-prefixed 20-byte hex address" },
+        from: { type: "number", description: "Unix ms window start" },
+        to: { type: "number", description: "Unix ms window end" },
+        event_types: { type: "string", description: "Comma-separated type filter (deposit,withdrawal,vault_deposit,vault_withdraw,vault_transfer_in,vault_transfer_out)" },
+        limit: { type: "number", description: "Max entries, default 1000, cap 10000" },
+      },
+      required: ["address"],
+    },
+    handler: async (args, api) => {
+      const address = requireString(args, "address");
+      const from = optionalNumber(args, "from", 0);
+      const to = optionalNumber(args, "to", 0);
+      const eventTypes = optionalString(args, "event_types", "");
+      const limit = optionalNumber(args, "limit", 1000);
+      const data = await api.getUserLedger(address, from, to, eventTypes, limit);
+      return JSON.stringify(data, null, 2);
     },
   },
 
-  // ─── Triggers ────────────────────────────────────────────────────────
+  // ─── Cross-wallet ranking (v0.34+) ─────────────────────────────────────
 
   {
-    name: "list_triggers",
-    description: "List all webhook triggers configured for the authenticated user",
-    inputSchema: { type: "object", properties: {}, required: [] },
-    handler: async (_args, api) => {
-      const data = await api.listTriggers();
+    name: "get_pnl_leaderboard",
+    description:
+      "Global Smart Money leaderboard — every HL wallet ranked by realized PnL, biggest losses, or volume over a chosen window. Replaces HL's 10-cap 'tracked addresses' with the full active universe. Sort by 'realized_pnl' (top winners), 'loss' (biggest losers), or 'volume'. Wallets with <5 fills in window are excluded.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        from: { type: "number", description: "Unix ms window start (default 30d ago)" },
+        to: { type: "number", description: "Unix ms window end (default now)" },
+        limit: { type: "number", description: "Number of rows, max 200, default 50" },
+        sort_by: {
+          type: "string",
+          description: "Ranking metric",
+          enum: ["realized_pnl", "loss", "volume"],
+        },
+      },
+      required: [],
+    },
+    handler: async (args, api) => {
+      const from = optionalNumber(args, "from", 0);
+      const to = optionalNumber(args, "to", 0);
+      const limit = optionalNumber(args, "limit", 50);
+      const sortBy = optionalString(args, "sort_by", "realized_pnl");
+      const data = await api.getPnLLeaderboard(from, to, limit, sortBy);
       return JSON.stringify(data, null, 2);
     },
   },
   {
-    name: "create_trigger",
-    description: "Create a rule-based webhook trigger that fires when market events match conditions (e.g. BTC price > 100000)",
+    name: "get_market_top_wallets",
+    description:
+      "Top wallets ranked for one specific market. HL's public info API caps tracked addresses at 10; this returns up to 200. Sort by 'volume' or 'realized_pnl'.",
     inputSchema: {
       type: "object",
       properties: {
-        name: { type: "string", description: "Human-readable trigger name" },
-        channel: { type: "string", description: "Event channel to monitor (trades, fills, liquidations, funding_rates, etc.)" },
-        webhook_url: { type: "string", description: "HTTPS URL to receive webhook POST when trigger fires" },
-        rule: { type: "string", description: 'Rule as JSON string, e.g. {"condition":{"field":"data.price","op":"gt","value":"100000"}}' },
+        market: { type: "string", description: "Market symbol (e.g. 'BTC-PERP' or 'flx:GAS-PERP')" },
+        from: { type: "number", description: "Unix ms window start (default 24h ago)" },
+        to: { type: "number", description: "Unix ms window end (default now)" },
+        limit: { type: "number", description: "Number of rows, max 200, default 25" },
+        sort_by: {
+          type: "string",
+          description: "Ranking metric",
+          enum: ["volume", "realized_pnl"],
+        },
       },
-      required: ["name", "channel", "webhook_url", "rule"],
+      required: ["market"],
     },
     handler: async (args, api) => {
-      const name = requireString(args, "name");
-      const channel = requireString(args, "channel");
-      const webhook_url = requireString(args, "webhook_url");
-      // Reject anything that's not https:// — webhooks travel API key /
-      // event payload data, and a plain http URL would leak it.
-      if (!/^https:\/\//i.test(webhook_url)) {
-        throw new Error('"webhook_url" must be an https:// URL');
-      }
-      const ruleStr = requireString(args, "rule");
-      const rule = validateRule(safeJSONParse(ruleStr, "rule"));
-      const data = await api.createTrigger({ name, channel, rule, webhook_url });
+      const market = requireString(args, "market");
+      const from = optionalNumber(args, "from", 0);
+      const to = optionalNumber(args, "to", 0);
+      const limit = optionalNumber(args, "limit", 25);
+      const sortBy = optionalString(args, "sort_by", "volume");
+      const data = await api.getMarketTopWallets(market, from, to, limit, sortBy);
       return JSON.stringify(data, null, 2);
     },
   },
   {
-    name: "test_trigger",
-    description: "Test a trigger rule against a sample event without creating it — dry run evaluation",
+    name: "get_markets_snapshot",
+    description:
+      "Anchored snapshot of every active market in one round-trip. Each row carries current mark, 24h-ago mark, 24h change %, latest open interest (USD and base), and latest funding. Replaces N×3 fan-out (candles + OI + funding per row). Filter by market_class or issuer.",
     inputSchema: {
       type: "object",
       properties: {
-        rule: { type: "string", description: "Rule as JSON string" },
-        event: { type: "string", description: "Sample event as JSON string to test against" },
+        market_class: {
+          type: "string",
+          description: "Filter to one class",
+          enum: ["perp", "spot", "prediction", "option"],
+        },
+        issuer: {
+          type: "string",
+          description: "HIP-3 builder code (e.g. 'flx'). Omit to include every issuer.",
+        },
       },
-      required: ["rule", "event"],
+      required: [],
     },
     handler: async (args, api) => {
-      const rule = validateRule(safeJSONParse(requireString(args, "rule"), "rule"));
-      const eventParsed = safeJSONParse(requireString(args, "event"), "event");
-      if (eventParsed === null || typeof eventParsed !== "object" || Array.isArray(eventParsed)) {
-        throw new Error('"event" must be a JSON object');
-      }
-      const data = await api.testTrigger({ rule, event: eventParsed as Record<string, unknown> });
+      const marketClass = optionalString(args, "market_class", "");
+      const issuer = optionalString(args, "issuer", "");
+      const data = await api.getMarketsSnapshot(marketClass, issuer);
       return JSON.stringify(data, null, 2);
     },
   },
   {
-    name: "toggle_trigger",
-    description: "Enable or disable an existing webhook trigger by ID",
+    name: "get_user_summary",
+    description:
+      "Aggregate stats for one address over a window — single ClickHouse aggregation. Returns volume, realized PnL, fill count, win rate, maker mix, markets touched. Fast-path replacement for the multi-call wallet X-Ray fan-out.",
     inputSchema: {
       type: "object",
       properties: {
-        id: { type: "number", description: "Trigger ID to toggle" },
-        is_active: { type: "boolean", description: "true to enable, false to disable" },
+        address: { type: "string", description: "0x-prefixed 20-byte hex address" },
+        from: { type: "number", description: "Unix ms window start (default 24h ago)" },
+        to: { type: "number", description: "Unix ms window end (default now)" },
       },
-      required: ["id", "is_active"],
+      required: ["address"],
     },
     handler: async (args, api) => {
-      const id = optionalNumber(args, "id", 0);
-      if (id <= 0) throw new Error('"id" is required and must be a positive number');
-      const isActiveRaw = args["is_active"];
-      if (typeof isActiveRaw !== "boolean") throw new Error('"is_active" is required and must be a boolean');
-      const data = await api.toggleTrigger(id, isActiveRaw);
+      const address = requireString(args, "address");
+      const from = optionalNumber(args, "from", 0);
+      const to = optionalNumber(args, "to", 0);
+      const data = await api.getUserSummary(address, from, to);
       return JSON.stringify(data, null, 2);
     },
   },
   {
-    name: "delete_trigger",
-    description: "Permanently delete a webhook trigger by ID",
+    name: "get_wallet_labels",
+    description:
+      "Precomputed wallet label catalog. Returns a map of address → label list covering top whales by 24h volume, top smart money by 30d realized PnL, every distinct vault address, and every vault leader (modal commission recipient). Edge-cached 5 min — fetch once and look up addresses locally.",
     inputSchema: {
       type: "object",
       properties: {
-        id: { type: "number", description: "Trigger ID to delete" },
+        whale_top_n: { type: "number", description: "Top N whales to include (max 500, default 100)" },
+        smart_top_n: { type: "number", description: "Top N smart-money wallets to include (max 500, default 100)" },
       },
-      required: ["id"],
+      required: [],
     },
     handler: async (args, api) => {
-      const id = optionalNumber(args, "id", 0);
-      if (id <= 0) throw new Error('"id" is required and must be a positive number');
-      await api.deleteTrigger(id);
-      return `Trigger ${id} deleted`;
+      const whaleN = optionalNumber(args, "whale_top_n", 100);
+      const smartN = optionalNumber(args, "smart_top_n", 100);
+      const data = await api.getWalletLabels(whaleN, smartN);
+      return JSON.stringify(data, null, 2);
     },
   },
+  {
+    name: "get_user_pnl_series",
+    description:
+      "Bucketed realized-PnL time series for one address. Each point is the sum of realized_pnl in a bucket_ms window. Server clamps bucket_ms so the series has ≤500 buckets.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        address: { type: "string", description: "0x-prefixed 20-byte hex address" },
+        from: { type: "number", description: "Unix ms window start" },
+        to: { type: "number", description: "Unix ms window end (default now)" },
+        bucket_ms: { type: "number", description: "Bucket size in ms (e.g. 3600000 for 1h)" },
+      },
+      required: ["address"],
+    },
+    handler: async (args, api) => {
+      const address = requireString(args, "address");
+      const from = optionalNumber(args, "from", 0);
+      const to = optionalNumber(args, "to", 0);
+      const bucketMs = optionalNumber(args, "bucket_ms", 0);
+      const data = await api.getUserPnLSeries(address, from, to, bucketMs);
+      return JSON.stringify(data, null, 2);
+    },
+  },
+
+
 
   // ─── Cohorts ─────────────────────────────────────────────────────────
 
@@ -593,34 +574,9 @@ export const tools: ToolDef[] = [
       return JSON.stringify(data, null, 2);
     },
   },
-  {
-    name: "delete_cohort",
-    description: "Delete a custom cohort by name. Predefined cohorts (top_pnl_30d, high_volume_30d, etc.) cannot be deleted",
-    inputSchema: {
-      type: "object",
-      properties: {
-        name: { type: "string", description: "Custom cohort name to delete" },
-      },
-      required: ["name"],
-    },
-    handler: async (args, api) => {
-      const name = requireString(args, "name");
-      await api.deleteCohort(name);
-      return `Cohort ${name} deleted`;
-    },
-  },
 
   // ─── Account & Status ────────────────────────────────────────────────
 
-  {
-    name: "get_me",
-    description: "Get the authenticated user's tier (free, explorer, builder, enterprise) and rate limits",
-    inputSchema: { type: "object", properties: {}, required: [] },
-    handler: async (_args, api) => {
-      const data = await api.getMe();
-      return JSON.stringify(data, null, 2);
-    },
-  },
   {
     name: "get_status",
     description: "Get system status, data freshness, and venue health (unauthenticated)",

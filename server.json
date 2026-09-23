@@ -1,23 +1,23 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.ironflowsh/mcp",
-  "description": "Tick-level Hyperliquid market data: fills, L4 book, funding, liquidations, smart triggers.",
+  "description": "Read-only Hyperliquid data for AI agents: fills, candles, funding, liquidations, wallet analytics.",
   "repository": {
     "url": "https://github.com/ironflowsh/mcp",
     "source": "github"
   },
-  "version": "0.4.1",
+  "version": "0.7.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@ironflowsh/mcp",
-      "version": "0.4.1",
+      "version": "0.7.0",
       "transport": {
         "type": "stdio"
       },
       "environmentVariables": [
         {
-          "description": "Ironflow API key. Create one at https://ironflow.sh/dashboard/login (free tier covers 24h of history with no credit card).",
+          "description": "Ironflow API key. Request one at https://ironflow.sh/api",
           "isRequired": true,
           "format": "string",
           "isSecret": true,

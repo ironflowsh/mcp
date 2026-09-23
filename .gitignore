@@ -5,3 +5,5 @@ build/
 .env
 .env.local
 mcp-registry-key.pem
+bun.lock
+*.tsbuildinfo

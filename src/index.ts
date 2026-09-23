@@ -1,20 +1,12 @@
 #!/usr/bin/env node
 
-// Ironflow MCP Server — market data for AI agents.
+// Ironflow MCP Server: read-only Hyperliquid data for AI agents.
 //
 // Usage:
-//   npx @ironflowsh/mcp                              # keyless, 30 req/min
-//   IRONFLOW_API_KEY=if_xxx npx @ironflowsh/mcp       # with API key
+//   IRONFLOW_API_KEY=if_xxx npx -y @ironflowsh/mcp
 //
-// Claude Desktop config (~/.claude/claude_desktop_config.json):
-//   {
-//     "mcpServers": {
-//       "ironflow": {
-//         "command": "npx",
-//         "args": ["-y", "@ironflowsh/mcp"]
-//       }
-//     }
-//   }
+// Every data tool needs an API key (request one at https://ironflow.sh/api).
+// Without one only the status tools answer; the rest return 401.
 
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -31,6 +23,13 @@ import { tools } from "./tools.js";
 
 const apiUrl = process.env.IRONFLOW_API_URL || "https://api.ironflow.sh";
 const apiKey = process.env.IRONFLOW_API_KEY;
+
+if (!apiKey) {
+  // stderr: stdout carries the MCP protocol.
+  console.error(
+    "IRONFLOW_API_KEY is not set. Only the status tools will work. Request a key at https://ironflow.sh/api",
+  );
+}
 
 const api = new IronflowAPI(apiUrl, apiKey);
 

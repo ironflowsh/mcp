@@ -9,7 +9,6 @@ import type { IronflowAPI } from "./api.js";
 function mockApi(overrides: Partial<Record<keyof IronflowAPI, unknown>> = {}): IronflowAPI {
   return {
     getPrice: vi.fn().mockResolvedValue("67000.50"),
-    getOrderbook: vi.fn().mockResolvedValue({ bids: [], asks: [] }),
     getRecentTrades: vi.fn().mockResolvedValue({ data: [] }),
     getCandles: vi.fn().mockResolvedValue({ data: [] }),
     getFundingRates: vi.fn().mockResolvedValue({ data: [] }),
@@ -28,8 +27,8 @@ function findTool(name: string) {
 // ─── Tool listing ─────────────────────────────────────────────────────────────
 
 describe("tools array", () => {
-  it("exports 32 tools", () => {
-    expect(tools).toHaveLength(32);
+  it("exports 30 tools", () => {
+    expect(tools).toHaveLength(30);
   });
 
   it("every tool has name, description, inputSchema, handler", () => {
@@ -69,23 +68,6 @@ describe("get_price", () => {
 
   it("throws when market is not a string", async () => {
     await expect(tool.handler({ market: 123 }, mockApi())).rejects.toThrow('"market" is required');
-  });
-});
-
-// ─── get_orderbook ───────────────────────────────────────────────────────────
-
-describe("get_orderbook", () => {
-  const tool = findTool("get_orderbook");
-
-  it("returns JSON-encoded orderbook", async () => {
-    const api = mockApi({ getOrderbook: vi.fn().mockResolvedValue({ bids: [["49999", "1"]], asks: [] }) });
-    const result = await tool.handler({ market: "BTC-PERP" }, api);
-    expect(JSON.parse(result)).toEqual({ bids: [["49999", "1"]], asks: [] });
-    expect(api.getOrderbook).toHaveBeenCalledWith("BTC-PERP");
-  });
-
-  it("throws when market is missing", async () => {
-    await expect(tool.handler({}, mockApi())).rejects.toThrow('"market" is required');
   });
 });
 
