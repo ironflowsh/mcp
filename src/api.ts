@@ -8,17 +8,22 @@ export class IronflowAPI {
   private apiKey?: string;
   private source: string;
   private userAgent: string;
+  private forwardedFor?: string;
 
+  // forwardedFor is set only by the hosted HTTP server: it passes the MCP
+  // client's IP on so keyless rate limits apply per caller, not per server.
   constructor(
     baseUrl = DEFAULT_BASE_URL,
     apiKey?: string,
     source = DEFAULT_SOURCE,
-    version = "unknown"
+    version = "unknown",
+    forwardedFor?: string
   ) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
     this.apiKey = apiKey;
     this.source = source;
     this.userAgent = `ironflow-mcp/${version}`;
+    this.forwardedFor = forwardedFor;
   }
 
   private headers(): Record<string, string> {
@@ -28,6 +33,9 @@ export class IronflowAPI {
     };
     if (this.apiKey) {
       h["Authorization"] = `Bearer ${this.apiKey}`;
+    }
+    if (this.forwardedFor) {
+      h["X-Forwarded-For"] = this.forwardedFor;
     }
     return h;
   }

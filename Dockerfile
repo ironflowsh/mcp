@@ -1,6 +1,7 @@
-# Minimal image so MCP catalogs (Glama, etc.) can run introspection on
-# the server. Listing tools does not require a working IRONFLOW_API_KEY,
-# but actual tool calls do — provide one at runtime via env.
+# Image for the Ironflow MCP server. The default entrypoint is the stdio
+# server, which MCP catalogs (Glama, etc.) run for introspection; no key is
+# needed. The hosted endpoint runs the same image with
+#   --entrypoint node ... build/http.js   (Streamable HTTP on $PORT, default 8080)
 FROM node:22-alpine AS build
 WORKDIR /app
 COPY package.json tsconfig.json ./
@@ -13,4 +14,5 @@ COPY --from=build /app/build ./build
 COPY --from=build /app/package.json ./
 COPY --from=build /app/node_modules ./node_modules
 ENV NODE_ENV=production
+USER node
 ENTRYPOINT ["node", "build/index.js"]
