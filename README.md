@@ -1,5 +1,7 @@
 # @ironflowsh/mcp
 
+[![smithery badge](https://smithery.ai/badge/ironflow/hyperliquid)](https://smithery.ai/servers/ironflow/hyperliquid)
+
 MCP server for [Ironflow](https://ironflow.sh): read-only Hyperliquid market data and wallet analytics for Claude, Cursor and any MCP client. It covers native perps, HIP-3 builder markets, HIP-4 outcome markets and spot. 33 tools, all read-only.
 
 No API key needed to start: keyless calls get 10 requests per minute and 24 hours of history. A free key from [ironflow.sh/key](https://ironflow.sh/key) raises that to 60 requests per minute and 30 days.
