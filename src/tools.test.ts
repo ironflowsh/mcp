@@ -2,6 +2,8 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { tools } from "./tools.js";
+import { outputSchemas } from "./schemas.js";
+import { structuredFrom } from "./server.js";
 import type { IronflowAPI } from "./api.js";
 
 // ─── Mock API ────────────────────────────────────────────────────────────────
@@ -64,10 +66,10 @@ describe("tools array", () => {
 describe("get_price", () => {
   const tool = findTool("get_price");
 
-  it("returns formatted price string", async () => {
+  it("returns the price as JSON", async () => {
     const api = mockApi();
     const result = await tool.handler({ market: "BTC-PERP" }, api);
-    expect(result).toBe("BTC-PERP: $67000.50");
+    expect(JSON.parse(result)).toEqual({ market: "BTC-PERP", price: "67000.50" });
     expect(api.getPrice).toHaveBeenCalledWith("BTC-PERP");
   });
 
@@ -254,5 +256,37 @@ describe("get_liquidation_summary", () => {
 
   it("rejects windows over 240 minutes", async () => {
     await expect(findTool("get_liquidation_summary").handler({ minutes: 600 }, mockApi())).rejects.toThrow(/240/);
+  });
+});
+
+// ─── Structured output ───────────────────────────────────────────────────────
+
+describe("output schemas", () => {
+  it("covers every tool and nothing else", () => {
+    expect(Object.keys(outputSchemas).sort()).toEqual(tools.map((t) => t.name).sort());
+  });
+
+  it("are loose objects: no required fields, no closed property sets", () => {
+    const walk = (s: unknown): void => {
+      if (!s || typeof s !== "object") return;
+      const o = s as Record<string, unknown>;
+      expect(o.required).toBeUndefined();
+      expect(o.additionalProperties === false).toBe(false);
+      Object.values(o).forEach(walk);
+    };
+    for (const [name, schema] of Object.entries(outputSchemas)) {
+      expect((schema as { type?: string }).type, name).toBe("object");
+      walk(schema);
+    }
+  });
+});
+
+describe("structuredFrom", () => {
+  it("passes a JSON object through", () => {
+    expect(structuredFrom('{"a":1}')).toEqual({ a: 1 });
+  });
+  it("wraps arrays and plain text so a result is always an object", () => {
+    expect(structuredFrom("[1,2]")).toEqual({ result: [1, 2] });
+    expect(structuredFrom("hello")).toEqual({ result: "hello" });
   });
 });

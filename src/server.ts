@@ -11,6 +11,7 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import type { IronflowAPI } from "./api.js";
+import { outputSchemas } from "./schemas.js";
 import { tools } from "./tools.js";
 
 // Server-level guidance the client shows the model alongside the tool list.
@@ -41,6 +42,7 @@ export function createServer(api: IronflowAPI, version: string): Server {
       name: t.name,
       description: t.description,
       inputSchema: t.inputSchema,
+      outputSchema: outputSchemas[t.name],
       annotations: { readOnlyHint: true, openWorldHint: true },
     })),
   }));
@@ -56,7 +58,7 @@ export function createServer(api: IronflowAPI, version: string): Server {
     }
     try {
       const result = await tool.handler(args ?? {}, api);
-      return { content: [{ type: "text", text: result }] };
+      return { content: [{ type: "text", text: result }], structuredContent: structuredFrom(result) };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
@@ -64,4 +66,21 @@ export function createServer(api: IronflowAPI, version: string): Server {
   });
 
   return server;
+}
+
+// structuredFrom turns a tool's JSON text into MCP structured output. Every
+// tool declares an output schema, and clients reject a successful result
+// without structuredContent, so anything that is not a JSON object is
+// wrapped as { result }. The schemas mark no field required, so the wrapper
+// still validates.
+export function structuredFrom(text: string): Record<string, unknown> {
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+    return { result: parsed };
+  } catch {
+    return { result: text };
+  }
 }

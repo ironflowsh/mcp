@@ -60,7 +60,7 @@ export const tools: ToolDef[] = [
     handler: async (args, api) => {
       const market = requireString(args, "market");
       const price = await api.getPrice(market);
-      return `${market}: $${price}`;
+      return JSON.stringify({ market, price });
     },
   },
   {
