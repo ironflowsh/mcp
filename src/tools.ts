@@ -3,6 +3,7 @@
 import { IronflowAPI } from "./api.js";
 import { MAX_SUMMARY_MINUTES, summarizeLiquidations } from "./liquidations.js";
 import { MAX_LIMIT, rankSnapshot, SORT_KEYS, type SortKey } from "./snapshot.js";
+import { BEHAVIOR_LABELS, BEHAVIOR_SORT_KEYS, behaviorSQL, MAX_BEHAVIOR_LIMIT, rowsToObjects, runQuery } from "./query.js";
 import { DEFAULT_FUNDING_ROWS, DEFAULT_MARKETS_LIMIT, shapeMarkets, shapeUserFunding, shapeWalletLabels } from "./shape.js";
 
 // Tool definition type (used for listing and calling).
@@ -49,6 +50,64 @@ function optionalString(args: Record<string, unknown>, key: string, defaultVal: 
 // ─── Tools ──────────────────────────────────────────────────────────────────
 
 export const tools: ToolDef[] = [
+  {
+    name: "describe_data",
+    description:
+      "Start here for any Hyperliquid question the other tools do not answer directly. Returns the SQL tables you can query with run_query (every fill, per-wallet daily totals, wallet behaviour labels, funding, mark and oracle prices, open interest, liquidations, builder-code fills, transfers, vault flows), their columns, how far back each goes, query tips, worked examples and your own limits.",
+    inputSchema: { type: "object", properties: {}, required: [] },
+    handler: async (_args, api) => JSON.stringify(await api.get("/v1/query/schema")),
+  },
+  {
+    name: "run_query",
+    description:
+      "Run one read-only ClickHouse SELECT over Ironflow's Hyperliquid tables (hl.fills, hl.wallet_daily, hl.wallet_behavior, hl.funding, hl.mark_prices, hl.oracle_prices, hl.open_interest, hl.liquidations, hl.builder_fills, hl.transfers, hl.vault_operations). Call describe_data first for columns and examples. Aggregate in SQL: results are capped (1,000 rows keyless). Keyless: last 24 hours, 5 s per query, 60 query seconds per hour per IP; a free key from https://ironflow.sh/key gives 30 days of history.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        sql: { type: "string", description: "One ClickHouse SELECT (or WITH ... SELECT) over hl.* tables, without a FORMAT clause" },
+        max_rows: { type: "number", description: "Most rows to return (default 200, capped by your tier)" },
+      },
+      required: ["sql"],
+    },
+    handler: async (args, api) => {
+      const sql = requireString(args, "sql");
+      const maxRows = optionalNumber(args, "max_rows", 200);
+      return JSON.stringify(await runQuery(api, sql, maxRows));
+    },
+  },
+  {
+    name: "get_wallet_behavior",
+    description:
+      "How Hyperliquid wallets trade, from their last 30 days: labels (market_maker, high_frequency, whale, directional, consistent_winner, big_loser, revenge_sizing, often_liquidated, hip3_trader, spot_trader, prediction_trader) and the numbers behind them (maker share, buy/sell imbalance, fills per day, green-day share, profit factor, liquidations). Look up specific addresses, or list wallets with one label.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        addresses: { type: "string", description: "Comma-separated wallet addresses (up to 50). Omit to list wallets instead." },
+        label: { type: "string", description: "Only wallets carrying this label", enum: [...BEHAVIOR_LABELS] },
+        sort_by: { type: "string", description: "Sort order when listing (default volume)", enum: [...BEHAVIOR_SORT_KEYS] },
+        min_volume_usd: { type: "number", description: "Only wallets with at least this 30-day volume" },
+        limit: { type: "number", description: `Wallets to return (default 20, max ${MAX_BEHAVIOR_LIMIT})` },
+      },
+      required: [],
+    },
+    handler: async (args, api) => {
+      const addresses = optionalString(args, "addresses", "")
+        .split(",")
+        .map((a) => a.trim())
+        .filter(Boolean);
+      const sortBy = optionalString(args, "sort_by", "volume") as (typeof BEHAVIOR_SORT_KEYS)[number];
+      const minVol = args.min_volume_usd === undefined ? 0 : Number(args.min_volume_usd);
+      const sql = behaviorSQL({
+        addresses,
+        label: optionalString(args, "label", ""),
+        sortBy,
+        limit: optionalNumber(args, "limit", addresses.length || 20),
+        minVolumeUsd: minVol,
+      });
+      const res = (await runQuery(api, sql, MAX_BEHAVIOR_LIMIT)) as { columns: string[]; rows: unknown[][] };
+      return JSON.stringify({ window_days: 30, wallets: rowsToObjects(res) });
+    },
+  },
   {
     name: "get_price",
     description: "Latest mark price of a Hyperliquid market: native perps, HIP-3 builder perps (e.g. xyz:NVDA-PERP) and spot.",

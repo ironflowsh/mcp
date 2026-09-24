@@ -2,7 +2,7 @@
 
 [![smithery badge](https://smithery.ai/badge/ironflow/hyperliquid)](https://smithery.ai/servers/ironflow/hyperliquid)
 
-MCP server for [Ironflow](https://ironflow.sh): read-only Hyperliquid market data and wallet analytics for Claude, Cursor and any MCP client. It covers native perps, HIP-3 builder markets, HIP-4 outcome markets and spot. 33 tools, all read-only.
+MCP server for [Ironflow](https://ironflow.sh): read-only Hyperliquid market data and wallet analytics for Claude, Cursor and any MCP client. It covers native perps, HIP-3 builder markets, HIP-4 outcome markets and spot. 36 tools, all read-only, including `run_query` for read-only SQL over every Hyperliquid fill, wallet, funding and liquidation table.
 
 No API key needed to start: keyless calls get 10 requests per minute and 24 hours of history. A free key from [ironflow.sh/key](https://ironflow.sh/key) raises that to 60 requests per minute and 30 days.
 
@@ -68,6 +68,8 @@ The `env` block is optional. Claude Code: `claude mcp add ironflow -- npx -y @ir
 To host the HTTP server yourself: `npx -y -p @ironflowsh/mcp ironflow-mcp-http` (listens on `PORT`, default 8080, path `/mcp`).
 
 ## Tools
+
+**Ask anything (SQL):** `describe_data` lists the queryable tables, columns and example queries; `run_query` runs one read-only ClickHouse SELECT over them (every fill, per-wallet daily totals, behaviour labels, funding, mark and oracle prices, open interest, liquidations, builder-code fills, transfers, vault flows); `get_wallet_behavior` returns 30-day trading-style labels per wallet. Keyless queries see the last 24 hours; a free key sees 30 days.
 
 **Market data:** `get_price`, `get_recent_trades`, `get_candles`, `get_funding_rates`, `get_open_interest`, `get_liquidations`, `get_liquidation_summary`, `get_fills`, `get_mark_prices`, `get_vault_operations`, `list_markets`, `get_markets_snapshot`
 

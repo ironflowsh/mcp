@@ -21,7 +21,7 @@ const DESCRIPTION =
 
 // Server-level guidance the client shows the model alongside the tool list.
 const INSTRUCTIONS =
-  "Read-only Hyperliquid market data from Ironflow's own nodes: trades, candles, funding, open interest, liquidations, mark prices, market snapshots and wallet analytics for native perps, HIP-3 builder markets and spot. Markets use display symbols such as BTC-PERP or xyz:NVDA-PERP; call list_markets when unsure. Keyless use allows 10 requests per minute and 24 hours of history; a free key from https://ironflow.sh/key raises that to 60 per minute and 30 days.";
+  "Read-only Hyperliquid market data from Ironflow's own nodes: trades, candles, funding, open interest, liquidations, mark prices, market snapshots and wallet analytics for native perps, HIP-3 builder markets and spot. Markets use display symbols such as BTC-PERP or xyz:NVDA-PERP; call list_markets when unsure. For anything the named tools do not cover, call describe_data and then run_query with ClickHouse SQL over the hl.* tables. Keyless use allows 10 requests per minute and 24 hours of history; a free key from https://ironflow.sh/key raises that to 60 per minute and 30 days.";
 
 // Reads the package version from package.json so MCP clients see the real
 // version in serverInfo instead of a constant that drifts on every release.

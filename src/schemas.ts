@@ -166,6 +166,42 @@ export const outputSchemas: Record<string, Schema> = {
     realized_pnl: F.realized_pnl,
   }),
 
+  describe_data: obj("Catalog of the SQL tables run_query can read", {
+    dialect: d("SQL dialect and database name"),
+    tables: arr("Queryable tables", obj("One table", {
+      name: d("Table name, e.g. hl.fills"),
+      description: d("What one row is"),
+      time_column: d("Column the history window filters on"),
+      data_from: d("How far back the table goes"),
+      columns: arr("Columns", obj("One column", { name: d("Name"), type: d("ClickHouse type"), description: d("Meaning") })),
+    })),
+    tips: arr("Query tips", d("One tip")),
+    examples: arr("Worked examples", obj("One example", { question: d("Question"), sql: d("SQL that answers it") })),
+    limits: d("Your tier's limits: history_days, max_execution_seconds, max_rows, budget_seconds_per_hour"),
+    tiers: arr("Every tier's limits", d("One tier")),
+  }),
+  run_query: obj("Query result", {
+    columns: arr("Column names in row order", d("Name")),
+    column_types: arr("ClickHouse types in row order", d("Type")),
+    rows: arr("Rows as positional arrays", d("One row")),
+    row_count: d("Rows returned"),
+    truncated: d("true when more rows existed than were returned"),
+    stats: d("elapsed_ms, rows_read, bytes_read"),
+    limits: d("Your tier's limits"),
+    budget_remaining_seconds: d("Query seconds left this hour"),
+  }),
+  get_wallet_behavior: obj("Wallet trading behaviour over the last 30 days", {
+    window_days: d("Days the features cover"),
+    wallets: arr("Wallets", obj("One wallet", {
+      address: d("Wallet address"),
+      labels: arr("Behaviour labels", d("Label")),
+      volume_usd: d("30-day volume in USD"),
+      realized_pnl_usd: d("30-day realized PnL in USD"),
+      maker_share: d("Maker volume / volume"),
+      fills_per_day: d("Fills per active day"),
+      liquidations: d("Liquidation events"),
+    })),
+  }),
   get_liquidation_summary: obj("Liquidation totals over the window", {
     from: F.from,
     to: F.to,

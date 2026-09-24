@@ -84,6 +84,20 @@ export class IronflowAPI {
     return res.text();
   }
 
+  // post sends a JSON body and returns the parsed JSON response.
+  async post(path: string, body: unknown): Promise<unknown> {
+    const url = new URL(path, this.baseUrl);
+    const res = await fetch(url.toString(), {
+      method: "POST",
+      headers: this.headers(),
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      throw await this.apiError(res);
+    }
+    return res.json();
+  }
+
   // ─── Convenience methods ──────────────────────────────────────────────
 
   async getPrice(market: string): Promise<string> {
