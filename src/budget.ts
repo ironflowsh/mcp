@@ -1,11 +1,12 @@
 // Size budget for tool results. MCP clients cap a single tool result (Claude
-// Code at about 25k tokens, roughly 75k characters of JSON) and fail the call
+// Code at 25k tokens; JSON full of hex addresses and numbers runs about 2.2
+// characters per token, so ~55k characters already fails) and fail the call
 // when it is larger, so a broad query would return nothing at all. Results are
 // sent as compact JSON, and anything still over budget has its largest list
 // or map trimmed from the end (lists are ranked, so the head is kept) with a
 // note telling the model how to narrow the query.
 
-export const MAX_RESULT_CHARS = 60_000;
+export const MAX_RESULT_CHARS = 40_000;
 
 type Container = { owner: Record<string, unknown>; key: string; path: string; size: number };
 
