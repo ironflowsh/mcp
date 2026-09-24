@@ -4,9 +4,9 @@
 #   --entrypoint node ... build/http.js   (Streamable HTTP on $PORT, default 8080)
 FROM node:22-alpine AS build
 WORKDIR /app
-COPY package.json tsconfig.json ./
+COPY package.json package-lock.json .npmrc tsconfig.json ./
 COPY src ./src
-RUN npm install --no-audit --no-fund && npm run build
+RUN npm ci --no-audit --no-fund && npm run build && npm prune --omit=dev
 
 FROM node:22-alpine
 WORKDIR /app
