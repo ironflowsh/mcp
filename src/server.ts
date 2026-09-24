@@ -14,6 +14,10 @@ import type { IronflowAPI } from "./api.js";
 import { outputSchemas } from "./schemas.js";
 import { tools } from "./tools.js";
 
+// One-line summary for MCP directories and client server lists.
+const DESCRIPTION =
+  "Read-only Hyperliquid market data and wallet analytics from our own nodes: trades, funding, liquidations, open interest, wallet PnL and trader rankings. Native perps, HIP-3, HIP-4 and spot. No API key needed.";
+
 // Server-level guidance the client shows the model alongside the tool list.
 const INSTRUCTIONS =
   "Read-only Hyperliquid market data from Ironflow's own nodes: trades, candles, funding, open interest, liquidations, mark prices, market snapshots and wallet analytics for native perps, HIP-3 builder markets and spot. Markets use display symbols such as BTC-PERP or xyz:NVDA-PERP; call list_markets when unsure. Keyless use allows 10 requests per minute and 24 hours of history; a free key from https://ironflow.sh/key raises that to 60 per minute and 30 days.";
@@ -33,7 +37,17 @@ export function packageVersion(): string {
 // createServer wires the tool list and tool calls to one API client.
 export function createServer(api: IronflowAPI, version: string): Server {
   const server = new Server(
-    { name: "ironflow", version },
+    {
+      name: "ironflow",
+      title: "Ironflow Hyperliquid",
+      version,
+      description: DESCRIPTION,
+      websiteUrl: "https://ironflow.sh/api#mcp",
+      icons: [
+        { src: "https://ironflow.sh/apple-touch-icon.png", mimeType: "image/png", sizes: ["256x256"] },
+        { src: "https://ironflow.sh/favicon.svg", mimeType: "image/svg+xml", sizes: ["any"] },
+      ],
+    },
     { capabilities: { tools: {} }, instructions: INSTRUCTIONS }
   );
 
