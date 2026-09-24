@@ -1,6 +1,6 @@
 # @ironflowsh/mcp
 
-[![smithery badge](https://smithery.ai/badge/ironflow/hyperliquid)](https://smithery.ai/servers/ironflow/hyperliquid)
+[![Smithery](https://img.shields.io/badge/Smithery-ironflow%2Fhyperliquid-FF5601)](https://smithery.ai/servers/ironflow/hyperliquid)
 
 MCP server for [Ironflow](https://ironflow.sh): read-only Hyperliquid market data and wallet analytics for Claude, Cursor and any MCP client. It covers native perps, HIP-3 builder markets, HIP-4 outcome markets and spot. 36 tools, all read-only, including `run_query` for read-only SQL over every Hyperliquid fill, wallet, funding and liquidation table.
 
