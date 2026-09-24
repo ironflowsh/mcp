@@ -149,18 +149,8 @@ export class IronflowAPI {
 
   // ─── Analytics ────────────────────────────────────────────────────────
 
-  async getNetFlows(interval: string = "1d", limit: string = "7"): Promise<unknown> {
-    return this.get("/v1/analytics/net-flows", { interval, limit });
-  }
-
   async getLiquidationLevels(market: string, bucket_size: string = "100"): Promise<unknown> {
     return this.get("/v1/analytics/liquidation-levels", { market, bucket_size });
-  }
-
-  async getOrderFlow(market: string = ""): Promise<unknown> {
-    const params: Record<string, string> = {};
-    if (market) params.market = market;
-    return this.get("/v1/analytics/order-flow", params);
   }
 
   async getVaultLeaderboard(limit: string = "10"): Promise<unknown> {

@@ -48,7 +48,7 @@ function optionalString(args: Record<string, unknown>, key: string, defaultVal: 
 export const tools: ToolDef[] = [
   {
     name: "get_price",
-    description: "Get the latest mid-market price for a perpetual futures market on Hyperliquid",
+    description: "Latest mark price of a Hyperliquid market: native perps, HIP-3 builder perps (e.g. xyz:NVDA-PERP) and spot.",
     inputSchema: {
       type: "object",
       properties: {
@@ -64,7 +64,7 @@ export const tools: ToolDef[] = [
   },
   {
     name: "get_recent_trades",
-    description: "Get recent tick-level trades for a market including price, size, side, and timestamp",
+    description: "Latest tick-level trades on a Hyperliquid market from our own nodes: price, size, side and block time. Covers native perps, HIP-3 builder markets, HIP-4 outcomes and spot.",
     inputSchema: {
       type: "object",
       properties: {
@@ -82,7 +82,7 @@ export const tools: ToolDef[] = [
   },
   {
     name: "get_candles",
-    description: "Get OHLCV candlestick data for a market. Useful for price analysis and charting",
+    description: "OHLCV candles for a Hyperliquid market, computed from tick-level trades.",
     inputSchema: {
       type: "object",
       properties: {
@@ -102,7 +102,7 @@ export const tools: ToolDef[] = [
   },
   {
     name: "get_funding_rates",
-    description: "Get funding rate history for a perpetual futures market. Rates are paid hourly on Hyperliquid",
+    description: "Hourly funding rate history for a Hyperliquid perp, including HIP-3 builder perps. A positive rate means longs pay shorts.",
     inputSchema: {
       type: "object",
       properties: {
@@ -120,7 +120,7 @@ export const tools: ToolDef[] = [
   },
   {
     name: "get_open_interest",
-    description: "Get the current open interest and 24h trading volume for a perpetual futures market",
+    description: "Latest open interest for a Hyperliquid perp.",
     inputSchema: {
       type: "object",
       properties: {
@@ -136,7 +136,7 @@ export const tools: ToolDef[] = [
   },
   {
     name: "get_liquidations",
-    description: "Get recent liquidation events for a market showing forced position closures with price, size, and address",
+    description: "Liquidations on a Hyperliquid perp, read from our own nodes: price, size, side and the liquidated wallet. Hyperliquid's public API has no liquidation feed.",
     inputSchema: {
       type: "object",
       properties: {
@@ -157,7 +157,7 @@ export const tools: ToolDef[] = [
 
   {
     name: "get_fills",
-    description: "Get trade fills for a specific wallet address, optionally filtered by market",
+    description: "Every fill for one Hyperliquid wallet, optionally for one market, from indexed history: price, size, side, fee and realized PnL. Hyperliquid's own userFills endpoints stop at the 10,000 most recent fills.",
     inputSchema: {
       type: "object",
       properties: {
@@ -177,7 +177,7 @@ export const tools: ToolDef[] = [
   },
   {
     name: "get_mark_prices",
-    description: "Get the current mark price, oracle price, and funding rate for a market",
+    description: "Mark price and oracle price series for a Hyperliquid perp.",
     inputSchema: {
       type: "object",
       properties: {
@@ -193,7 +193,7 @@ export const tools: ToolDef[] = [
   },
   {
     name: "get_vault_operations",
-    description: "Get vault deposit and withdrawal events, filterable by vault address or user address",
+    description: "Deposits into and withdrawals from Hyperliquid vaults. Pass a vault address, a depositor address, or both; one is required.",
     inputSchema: {
       type: "object",
       properties: {
@@ -212,29 +212,11 @@ export const tools: ToolDef[] = [
     },
   },
 
-  // ─── Analytics (Builder+ tier) ───────────────────────────────────────
+  // ─── Analytics ───────────────────────────────────────────────────────
 
   {
-    name: "get_net_flows",
-    description: "Get net deposit/withdrawal flows over time — shows capital inflows and outflows (Builder+ tier)",
-    inputSchema: {
-      type: "object",
-      properties: {
-        interval: { type: "string", description: "Time interval (1h, 4h, 8h, 1d, 7d). Default: 1d", enum: ["1h", "4h", "8h", "1d", "7d"] },
-        limit: { type: "number", description: "Number of data points (default 7)" },
-      },
-      required: [],
-    },
-    handler: async (args, api) => {
-      const interval = optionalString(args, "interval", "1d");
-      const limit = optionalNumber(args, "limit", 7);
-      const data = await api.getNetFlows(interval, String(limit));
-      return JSON.stringify(data, null, 2);
-    },
-  },
-  {
     name: "get_liquidation_levels",
-    description: "Get liquidations bucketed by price level — useful for heatmap visualization (Builder+ tier)",
+    description: "Liquidated notional on a Hyperliquid perp bucketed by price: where longs and shorts were wiped out. Needs a Builder or Enterprise key; keyless and free-key calls return 403.",
     inputSchema: {
       type: "object",
       properties: {
@@ -251,24 +233,8 @@ export const tools: ToolDef[] = [
     },
   },
   {
-    name: "get_order_flow",
-    description: "Get fill and cancel rates per market — shows execution quality (Builder+ tier)",
-    inputSchema: {
-      type: "object",
-      properties: {
-        market: { type: "string", description: "Optional market filter" },
-      },
-      required: [],
-    },
-    handler: async (args, api) => {
-      const market = optionalString(args, "market", "");
-      const data = await api.getOrderFlow(market);
-      return JSON.stringify(data, null, 2);
-    },
-  },
-  {
     name: "get_vault_leaderboard",
-    description: "Get vaults ranked by net deposits — shows which vaults are attracting capital (Builder+ tier)",
+    description: "Hyperliquid vaults ranked by net deposits. Needs a Builder or Enterprise key; keyless and free-key calls return 403.",
     inputSchema: {
       type: "object",
       properties: {
@@ -284,7 +250,7 @@ export const tools: ToolDef[] = [
   },
   {
     name: "get_funding_stats",
-    description: "Get funding rate statistics over time including annualized rates (Builder+ tier)",
+    description: "Funding statistics per time bucket for a Hyperliquid perp: average, minimum, maximum and annualized rate.",
     inputSchema: {
       type: "object",
       properties: {
@@ -312,7 +278,7 @@ export const tools: ToolDef[] = [
   // JSON object the agent can reason over.
   {
     name: "get_user_state",
-    description: "Get an address's current open perp positions + unrealized P&L. Mirrors HL clearinghouseState — best tool for 'is this wallet long or short right now?' or 'what's their P&L?' questions.",
+    description: "Open positions and unrealized PnL for a Hyperliquid wallet right now, across native and HIP-3 perps. Use it for questions like 'is this wallet long or short?'",
     inputSchema: {
       type: "object",
       properties: {
@@ -328,7 +294,7 @@ export const tools: ToolDef[] = [
   },
   {
     name: "get_user_funding",
-    description: "Get funding payments per market per bucket for an address. Sign convention: positive = received, negative = paid. Use bucket=1d for daily roll-up, 1h for raw HL funding intervals.",
+    description: "Funding a Hyperliquid wallet paid or received, per market per bucket. Positive means received, negative means paid. bucket=1d gives daily totals, 1h the raw hourly payments.",
     inputSchema: {
       type: "object",
       properties: {
@@ -352,7 +318,7 @@ export const tools: ToolDef[] = [
   },
   {
     name: "get_user_maker_taker",
-    description: "Get an address's maker vs taker fill breakdown per market over a time window. The single most diagnostic endpoint for market-maker analysis — no commercial provider exposes this precomputed. High maker share with negative maker_fee = classic MM (rebate income); high taker share = liquidity taker. Caveat: fills before 2026-05-21 default to maker until S3 backfill.",
+    description: "Maker vs taker breakdown of a Hyperliquid wallet's fills per market: volume, fees and rebates. A high maker share with negative maker fees marks a market maker.",
     inputSchema: {
       type: "object",
       properties: {
@@ -374,7 +340,7 @@ export const tools: ToolDef[] = [
   },
   {
     name: "get_user_ledger",
-    description: "Get non-fill ledger events for an address: deposits, withdrawals, vault operations. Sign convention on amount: positive = into account, negative = out. Phase b will add rewardsClaim (airdrops), spotTransfer, delegate/undelegate (HYPE staking).",
+    description: "Vault deposits, withdrawals and transfers for a Hyperliquid wallet. Positive amounts go into the account. Account deposits and withdrawals are recorded only up to 2026-06-06.",
     inputSchema: {
       type: "object",
       properties: {
@@ -402,7 +368,7 @@ export const tools: ToolDef[] = [
   {
     name: "get_pnl_leaderboard",
     description:
-      "Global Smart Money leaderboard — every HL wallet ranked by realized PnL, biggest losses, or volume over a chosen window. Replaces HL's 10-cap 'tracked addresses' with the full active universe. Sort by 'realized_pnl' (top winners), 'loss' (biggest losers), or 'volume'. Wallets with <5 fills in window are excluded.",
+      "Every Hyperliquid wallet ranked by realized PnL, biggest losses or volume over a window. Wallets with fewer than 5 fills in the window are left out.",
     inputSchema: {
       type: "object",
       properties: {
@@ -429,7 +395,7 @@ export const tools: ToolDef[] = [
   {
     name: "get_market_top_wallets",
     description:
-      "Top wallets ranked for one specific market. HL's public info API caps tracked addresses at 10; this returns up to 200. Sort by 'volume' or 'realized_pnl'.",
+      "Top wallets on one Hyperliquid market by volume or realized PnL, up to 200 rows.",
     inputSchema: {
       type: "object",
       properties: {
@@ -458,7 +424,7 @@ export const tools: ToolDef[] = [
   {
     name: "get_markets_snapshot",
     description:
-      "Anchored snapshot of every active market in one round-trip. Each row carries current mark, 24h-ago mark, 24h change %, latest open interest (USD and base), and latest funding. Replaces N×3 fan-out (candles + OI + funding per row). Filter by market_class or issuer.",
+      "Every active Hyperliquid market in one call: mark price, 24h change, open interest and latest funding. Use it to scan for funding extremes or big movers. Filter by market_class or HIP-3 issuer.",
     inputSchema: {
       type: "object",
       properties: {
@@ -484,7 +450,7 @@ export const tools: ToolDef[] = [
   {
     name: "get_user_summary",
     description:
-      "Aggregate stats for one address over a window — single ClickHouse aggregation. Returns volume, realized PnL, fill count, win rate, maker mix, markets touched. Fast-path replacement for the multi-call wallet X-Ray fan-out.",
+      "One Hyperliquid wallet's stats over a window: volume, realized PnL, fill count, win rate, maker share and markets traded.",
     inputSchema: {
       type: "object",
       properties: {
@@ -505,7 +471,7 @@ export const tools: ToolDef[] = [
   {
     name: "get_wallet_labels",
     description:
-      "Precomputed wallet label catalog. Returns a map of address → label list covering top whales by 24h volume, top smart money by 30d realized PnL, every distinct vault address, and every vault leader (modal commission recipient). Edge-cached 5 min — fetch once and look up addresses locally.",
+      "Labels for notable Hyperliquid wallets: top whales by 24h volume, top traders by 30-day realized PnL, vaults and vault leaders. Returns a map of address to labels; fetch once and look addresses up locally.",
     inputSchema: {
       type: "object",
       properties: {
@@ -524,7 +490,7 @@ export const tools: ToolDef[] = [
   {
     name: "get_user_pnl_series",
     description:
-      "Bucketed realized-PnL time series for one address. Each point is the sum of realized_pnl in a bucket_ms window. Server clamps bucket_ms so the series has ≤500 buckets.",
+      "Realized PnL curve of a Hyperliquid wallet over time, bucketed (for example hourly or daily).",
     inputSchema: {
       type: "object",
       properties: {
@@ -547,6 +513,95 @@ export const tools: ToolDef[] = [
 
 
 
+
+  // ─── Signals (public endpoints: 60 requests per minute per IP, no key) ──
+
+  {
+    name: "get_top_traders",
+    description:
+      "Hyperliquid traders ranked across all markets by results over 7, 30 or 90 days: win rate, profit factor, realized PnL, max drawdown and best markets. sort=top ranks by realized PnL, lowrisk by smallest max drawdown, new by most recently first seen.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        window: { type: "string", description: "Lookback window. Default 30d", enum: ["7d", "30d", "90d"] },
+        sort: { type: "string", description: "Ranking. Default top", enum: ["top", "lowrisk", "new"] },
+        limit: { type: "number", description: "Number of traders (1-50, default 20)" },
+      },
+      required: [],
+    },
+    handler: async (args, api) => {
+      const data = await api.get("/v1/copy-feed", {
+        window: optionalString(args, "window", "30d"),
+        sort: optionalString(args, "sort", "top"),
+        limit: String(optionalNumber(args, "limit", 20)),
+      });
+      return JSON.stringify(data, null, 2);
+    },
+  },
+  {
+    name: "get_market_leaders",
+    description:
+      "The best traders on one Hyperliquid market, ranked by profit factor then win rate, among wallets with at least 5 closed trades there.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        market: { type: "string", description: 'Market symbol (e.g. "BTC-PERP", "xyz:NVDA-PERP")' },
+        window: { type: "string", description: "Lookback window. Default 30d", enum: ["7d", "30d", "90d"] },
+        limit: { type: "number", description: "Number of traders (1-50, default 20)" },
+      },
+      required: ["market"],
+    },
+    handler: async (args, api) => {
+      const data = await api.get("/v1/asset-leaders", {
+        market: requireString(args, "market"),
+        window: optionalString(args, "window", "30d"),
+        limit: String(optionalNumber(args, "limit", 20)),
+      });
+      return JSON.stringify(data, null, 2);
+    },
+  },
+  {
+    name: "get_early_movers",
+    description:
+      "Wallets whose large orders (at least $10k) on a Hyperliquid market were followed by a price move in their direction within 30 minutes. Returns a lead score in basis points and a hit rate per wallet. Past activity does not predict future results.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        market: { type: "string", description: 'Market symbol (e.g. "BTC-PERP", "xyz:SKHX-PERP")' },
+        window: { type: "string", description: "Lookback window. Default 30d", enum: ["7d", "30d"] },
+        limit: { type: "number", description: "Number of wallets (1-25, default 10)" },
+      },
+      required: ["market"],
+    },
+    handler: async (args, api) => {
+      const data = await api.get("/v1/whale-signals", {
+        market: requireString(args, "market"),
+        window: optionalString(args, "window", "30d"),
+        limit: String(optionalNumber(args, "limit", 10)),
+      });
+      return JSON.stringify(data, null, 2);
+    },
+  },
+  {
+    name: "get_trader_profile",
+    description:
+      "A Hyperliquid wallet's trading record over 7, 30 or 90 days: win rate, profit factor, realized PnL, max drawdown and its best markets.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        address: { type: "string", description: "0x-prefixed 20-byte hex address" },
+        window: { type: "string", description: "Lookback window. Default 30d", enum: ["7d", "30d", "90d"] },
+      },
+      required: ["address"],
+    },
+    handler: async (args, api) => {
+      const data = await api.get("/v1/trader-activity", {
+        address: requireString(args, "address"),
+        window: optionalString(args, "window", "30d"),
+      });
+      return JSON.stringify(data, null, 2);
+    },
+  },
   // ─── Cohorts ─────────────────────────────────────────────────────────
 
   {
@@ -619,7 +674,7 @@ export const tools: ToolDef[] = [
   {
     name: "list_markets",
     description:
-      "List active markets from the registry. Filter by source (venue), market_class (perp|spot|prediction), or issuer (HIP-3 builder code; pass empty string '' for native non-builder markets only). HIP-4 outcome contracts (live on Hyperliquid mainnet since 2026-05-02) use market_class='prediction' and display symbols like '#0-OUTCOME' / '#1-OUTCOME' — complementary outcomes of one binary market have prices summing to 1.0.",
+      "Every active Hyperliquid market with its display symbol, class (perp, spot, prediction), HIP-3 issuer and base asset. Call it when unsure how a market is named.",
     inputSchema: {
       type: "object",
       properties: {

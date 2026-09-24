@@ -27,8 +27,21 @@ function findTool(name: string) {
 // ─── Tool listing ─────────────────────────────────────────────────────────────
 
 describe("tools array", () => {
-  it("exports 30 tools", () => {
-    expect(tools).toHaveLength(30);
+  it("exports 32 tools", () => {
+    expect(tools).toHaveLength(32);
+  });
+
+  it("drops tools whose tables stopped updating", () => {
+    const names = tools.map((t) => t.name);
+    expect(names).not.toContain("get_net_flows");
+    expect(names).not.toContain("get_order_flow");
+  });
+
+  it("names Hyperliquid in every market-data description", () => {
+    const generic = ["list_cohorts", "get_cohort_addresses", "get_status", "get_status_metrics", "get_status_history"];
+    for (const tool of tools.filter((t) => !generic.includes(t.name))) {
+      expect(tool.description, tool.name).toMatch(/Hyperliquid/);
+    }
   });
 
   it("every tool has name, description, inputSchema, handler", () => {
@@ -177,5 +190,33 @@ describe("API error propagation", () => {
   it("propagates API errors through tool handler", async () => {
     const api = mockApi({ getPrice: vi.fn().mockRejectedValue(new Error("Market not found")) });
     await expect(findTool("get_price").handler({ market: "FAKE-PERP" }, api)).rejects.toThrow("Market not found");
+  });
+});
+
+// ─── Signal tools (public endpoints) ──────────────────────────────────────────
+
+describe("signal tools", () => {
+  const W = "0x9b3cafa1209ac61f02d7bc3b219697fb171c9c91";
+  const cases: [string, Record<string, unknown>, string, Record<string, string>][] = [
+    ["get_top_traders", {}, "/v1/copy-feed", { window: "30d", sort: "top", limit: "20" }],
+    ["get_market_leaders", { market: "BTC-PERP" }, "/v1/asset-leaders", { market: "BTC-PERP", window: "30d", limit: "20" }],
+    ["get_early_movers", { market: "ETH-PERP", window: "7d" }, "/v1/whale-signals", { market: "ETH-PERP", window: "7d", limit: "10" }],
+    ["get_trader_profile", { address: W }, "/v1/trader-activity", { address: W, window: "30d" }],
+  ];
+  for (const [name, args, path, params] of cases) {
+    it(`${name} calls ${path}`, async () => {
+      const get = vi.fn().mockResolvedValue({ ok: true });
+      const out = await findTool(name).handler(args, mockApi({ get }));
+      expect(get).toHaveBeenCalledWith(path, params);
+      expect(JSON.parse(out)).toEqual({ ok: true });
+    });
+  }
+
+  it("get_market_leaders requires a market", async () => {
+    await expect(findTool("get_market_leaders").handler({}, mockApi())).rejects.toThrow(/market/);
+  });
+
+  it("get_trader_profile requires an address", async () => {
+    await expect(findTool("get_trader_profile").handler({}, mockApi())).rejects.toThrow(/address/);
   });
 });
