@@ -249,6 +249,8 @@ export const outputSchemas: Record<string, Schema> = {
   get_user_state: USER_STATE,
 
   get_user_funding: obj("Funding paid or received per market per bucket", {
+    total_rows: d("Rows in the window before the limit"),
+    returned: d("Rows in data, most recent first"),
     address: F.address,
     bucket: d("Bucket size"),
     from: F.from,
@@ -324,19 +326,29 @@ export const outputSchemas: Record<string, Schema> = {
     ),
   }),
 
-  get_markets_snapshot: page("Every active market", {
-    market_id: d("Stable market id"),
-    display_symbol: F.display_symbol,
-    market_class: F.market_class,
-    issuer: F.issuer,
-    mark_price: d("Current mark price"),
-    mark_24h_ago: d("Mark price 24h ago"),
-    change_24h_pct: d("24h change as a fraction, e.g. -0.031 for -3.1%"),
-    open_interest_base: d("Open interest in base units"),
-    open_interest_usd: d("Open interest in USD"),
-    funding_rate: d("Current hourly funding rate"),
-    mark_ts_ms: d("Mark sample time, Unix milliseconds"),
-    volume_24h_usd: d("24h volume in USD"),
+  get_markets_snapshot: obj("Markets ranked by the requested key", {
+    sort_by: d("Ranking key used"),
+    order: d("desc or asc"),
+    total_markets: d("Active markets before filtering"),
+    matched: d("Markets past the volume floor"),
+    returned: d("Rows in data"),
+    data: arr(
+      "Ranked markets",
+      obj("One market", {
+        market_id: d("Stable market id"),
+        display_symbol: F.display_symbol,
+        market_class: F.market_class,
+        issuer: F.issuer,
+        mark_price: d("Current mark price"),
+        mark_24h_ago: d("Mark price 24h ago"),
+        change_24h_pct: d("24h change as a fraction, e.g. -0.031 for -3.1%"),
+        open_interest_base: d("Open interest in base units"),
+        open_interest_usd: d("Open interest in USD"),
+        funding_rate: d("Current hourly funding rate"),
+        mark_ts_ms: d("Mark sample time, Unix milliseconds"),
+        volume_24h_usd: d("24h volume in USD"),
+      })
+    ),
   }),
 
   get_user_summary: obj("One wallet over a window", {
@@ -374,6 +386,7 @@ export const outputSchemas: Record<string, Schema> = {
         ),
       },
       counts: d("Wallets per label kind"),
+      note: d("What the labels map includes"),
     }),
   },
 
@@ -496,6 +509,9 @@ export const outputSchemas: Record<string, Schema> = {
   }),
 
   list_markets: obj("Active markets", {
+    total_markets: d("Active markets before search"),
+    matched: d("Markets matching the search"),
+    returned: d("Rows in data"),
     data: arr(
       "Markets",
       obj("One market", {
@@ -512,6 +528,5 @@ export const outputSchemas: Record<string, Schema> = {
         max_leverage: d("Maximum leverage"),
       })
     ),
-    count: d("Number of markets"),
   }),
 };

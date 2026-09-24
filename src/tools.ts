@@ -2,6 +2,8 @@
 
 import { IronflowAPI } from "./api.js";
 import { MAX_SUMMARY_MINUTES, summarizeLiquidations } from "./liquidations.js";
+import { MAX_LIMIT, rankSnapshot, SORT_KEYS, type SortKey } from "./snapshot.js";
+import { DEFAULT_FUNDING_ROWS, DEFAULT_MARKETS_LIMIT, shapeMarkets, shapeUserFunding, shapeWalletLabels } from "./shape.js";
 
 // Tool definition type (used for listing and calling).
 export interface ToolDef {
@@ -325,6 +327,7 @@ export const tools: ToolDef[] = [
         from: { type: "number", description: "Unix ms window start (inclusive)" },
         to: { type: "number", description: "Unix ms window end (exclusive)" },
         bucket: { type: "string", enum: ["1h", "1d", "raw"], description: "Aggregation bucket; default 1d" },
+        limit: { type: "number", description: `Most recent rows to return (default ${DEFAULT_FUNDING_ROWS})` },
       },
       required: ["address"],
     },
@@ -334,8 +337,8 @@ export const tools: ToolDef[] = [
       const from = optionalNumber(args, "from", 0);
       const to = optionalNumber(args, "to", 0);
       const bucket = optionalString(args, "bucket", "1d");
-      const data = await api.getUserFunding(address, market, from, to, bucket);
-      return JSON.stringify(data, null, 2);
+      const data = (await api.getUserFunding(address, market, from, to, bucket)) as { data?: Record<string, unknown>[] };
+      return JSON.stringify(shapeUserFunding(data, optionalNumber(args, "limit", DEFAULT_FUNDING_ROWS)));
     },
   },
   {
@@ -446,7 +449,7 @@ export const tools: ToolDef[] = [
   {
     name: "get_markets_snapshot",
     description:
-      "Every active Hyperliquid market in one call: mark price, 24h change, open interest and latest funding. Use it to scan for funding extremes or big movers. Filter by market_class or HIP-3 issuer.",
+      "Active Hyperliquid markets ranked in one call: mark price, 24h change, 24h volume, open interest and current hourly funding. Sort by abs_funding for the most extreme funding, abs_change_24h for the biggest movers, or volume (default). Use min_volume_usd to skip illiquid markets. Returns the top 25 unless limit is set.",
     inputSchema: {
       type: "object",
       properties: {
@@ -457,16 +460,30 @@ export const tools: ToolDef[] = [
         },
         issuer: {
           type: "string",
-          description: "HIP-3 builder code (e.g. 'flx'). Omit to include every issuer.",
+          description: "HIP-3 builder code (e.g. 'xyz'). Omit to include every issuer.",
         },
+        sort_by: {
+          type: "string",
+          description: "Ranking key (default volume). funding_rate is hourly; positive means longs pay shorts.",
+          enum: [...SORT_KEYS],
+        },
+        order: { type: "string", description: "desc (default) or asc", enum: ["desc", "asc"] },
+        limit: { type: "number", description: `Rows to return (1-${MAX_LIMIT}, default 25)` },
+        min_volume_usd: { type: "number", description: "Skip markets with less 24h volume than this (USD)" },
       },
       required: [],
     },
     handler: async (args, api) => {
       const marketClass = optionalString(args, "market_class", "");
       const issuer = optionalString(args, "issuer", "");
-      const data = await api.getMarketsSnapshot(marketClass, issuer);
-      return JSON.stringify(data, null, 2);
+      const resp = (await api.getMarketsSnapshot(marketClass, issuer)) as { data?: Record<string, unknown>[] };
+      const ranked = rankSnapshot(resp.data ?? [], {
+        sortBy: optionalString(args, "sort_by", "volume") as SortKey,
+        order: optionalString(args, "order", "desc") === "asc" ? "asc" : "desc",
+        limit: optionalNumber(args, "limit", 25),
+        minVolumeUsd: args.min_volume_usd === undefined ? 0 : Number(args.min_volume_usd),
+      });
+      return JSON.stringify(ranked);
     },
   },
   {
@@ -493,10 +510,11 @@ export const tools: ToolDef[] = [
   {
     name: "get_wallet_labels",
     description:
-      "Labels for notable Hyperliquid wallets: top whales by 24h volume, top traders by 30-day realized PnL, vaults and vault leaders. Returns a map of address to labels; fetch once and look addresses up locally.",
+      "Labels for notable Hyperliquid wallets: top whales by 24h volume, top traders by 30-day realized PnL, vaults and vault leaders. Pass addresses to check specific wallets; without them it lists the whales and smart money.",
     inputSchema: {
       type: "object",
       properties: {
+        addresses: { type: "string", description: "Comma-separated wallet addresses to look up" },
         whale_top_n: { type: "number", description: "Top N whales to include (max 500, default 100)" },
         smart_top_n: { type: "number", description: "Top N smart-money wallets to include (max 500, default 100)" },
       },
@@ -505,8 +523,12 @@ export const tools: ToolDef[] = [
     handler: async (args, api) => {
       const whaleN = optionalNumber(args, "whale_top_n", 100);
       const smartN = optionalNumber(args, "smart_top_n", 100);
-      const data = await api.getWalletLabels(whaleN, smartN);
-      return JSON.stringify(data, null, 2);
+      const addresses = optionalString(args, "addresses", "")
+        .split(",")
+        .map((a) => a.trim())
+        .filter(Boolean);
+      const data = (await api.getWalletLabels(whaleN, smartN)) as Parameters<typeof shapeWalletLabels>[0];
+      return JSON.stringify(shapeWalletLabels(data, { addresses: addresses.length ? addresses : undefined }));
     },
   },
   {
@@ -696,7 +718,7 @@ export const tools: ToolDef[] = [
   {
     name: "list_markets",
     description:
-      "Every active Hyperliquid market with its display symbol, class (perp, spot, prediction), HIP-3 issuer and base asset. Call it when unsure how a market is named.",
+      "Active Hyperliquid markets with display symbol, class (perp, spot, prediction), HIP-3 issuer and base asset. Use search to find how a market is named (e.g. search 'nvda' finds xyz:NVDA-PERP).",
     inputSchema: {
       type: "object",
       properties: {
@@ -711,6 +733,8 @@ export const tools: ToolDef[] = [
           description:
             "HIP-3 issuer code (e.g. 'flx'). Pass empty string '' to return only native non-builder markets. Omit to include every issuer.",
         },
+        search: { type: "string", description: "Case-insensitive match on symbol, base asset or Hyperliquid coin" },
+        limit: { type: "number", description: `Rows to return (default ${DEFAULT_MARKETS_LIMIT})` },
       },
       required: [],
     },
@@ -722,8 +746,10 @@ export const tools: ToolDef[] = [
         Object.prototype.hasOwnProperty.call(args, "issuer")
           ? optionalString(args, "issuer", "")
           : undefined;
-      const data = await api.listMarkets(source, market_class, issuer);
-      return JSON.stringify(data, null, 2);
+      const data = (await api.listMarkets(source, market_class, issuer)) as { data?: Record<string, unknown>[] };
+      return JSON.stringify(
+        shapeMarkets(data, { search: optionalString(args, "search", ""), limit: optionalNumber(args, "limit", DEFAULT_MARKETS_LIMIT) })
+      );
     },
   },
 ];

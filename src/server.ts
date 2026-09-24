@@ -11,6 +11,7 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import type { IronflowAPI } from "./api.js";
+import { fitToBudget } from "./budget.js";
 import { outputSchemas } from "./schemas.js";
 import { tools } from "./tools.js";
 
@@ -71,8 +72,10 @@ export function createServer(api: IronflowAPI, version: string): Server {
       };
     }
     try {
-      const result = await tool.handler(args ?? {}, api);
-      return { content: [{ type: "text", text: result }], structuredContent: structuredFrom(result) };
+      const structured = structuredFrom(await tool.handler(args ?? {}, api));
+      // Compact JSON, trimmed to fit a client's per-result limit.
+      const text = fitToBudget(structured);
+      return { content: [{ type: "text", text }], structuredContent: JSON.parse(text) as Record<string, unknown> };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
