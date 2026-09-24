@@ -1,6 +1,7 @@
 // MCP tool definitions for Ironflow market data.
 
 import { IronflowAPI } from "./api.js";
+import { MAX_SUMMARY_MINUTES, summarizeLiquidations } from "./liquidations.js";
 
 // Tool definition type (used for listing and calling).
 export interface ToolDef {
@@ -155,6 +156,27 @@ export const tools: ToolDef[] = [
 
   // ─── Additional Market Data ──────────────────────────────────────────
 
+  {
+    name: "get_liquidation_summary",
+    description:
+      "Liquidations across every Hyperliquid market (or one market) over the last N minutes, totalled: count, notional, longs vs shorts liquidated, the top markets and the largest single liquidation. Use it for 'who got liquidated in the last hour?'. Keyless calls can look back 60 minutes, keyed calls up to 240.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        minutes: { type: "number", description: "Lookback in minutes (default 60, max 240)" },
+        market: { type: "string", description: 'Optional market filter (e.g. "BTC-PERP")' },
+      },
+      required: [],
+    },
+    handler: async (args, api) => {
+      const minutes = optionalNumber(args, "minutes", 60);
+      if (minutes > MAX_SUMMARY_MINUTES) {
+        throw new Error(`"minutes" must be at most ${MAX_SUMMARY_MINUTES}`);
+      }
+      const market = optionalString(args, "market", "");
+      return JSON.stringify(await summarizeLiquidations(api, minutes, market), null, 2);
+    },
+  },
   {
     name: "get_fills",
     description: "Every fill for one Hyperliquid wallet, optionally for one market, from indexed history: price, size, side, fee and realized PnL. Hyperliquid's own userFills endpoints stop at the 10,000 most recent fills.",
