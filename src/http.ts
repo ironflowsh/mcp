@@ -16,13 +16,18 @@
 //   FORWARD_CLIENT_IP  "true" only behind a proxy that sets X-Forwarded-For
 //                      to the real client IP; the IP is passed to the API so
 //                      keyless limits apply per caller
+//   MCP_LOG_SALT       keys the caller-IP hash in the access log; use the
+//                      API's REQUEST_LOG_SALT so a caller hashes the same in
+//                      both logs (random per process when unset)
 
+import { randomBytes } from "node:crypto";
 import { createServer as createHttpServer, IncomingMessage, ServerResponse } from "node:http";
 
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { IronflowAPI } from "./api.js";
 import { clientIP, HttpError, readKey } from "./request.js";
 import { createServer, packageVersion } from "./server.js";
+import { callerHash, clientFromInitialize, sanitizeClientApp, summarizeArgs } from "./usage.js";
 
 const DEFAULT_PORT = 8080;
 const MAX_BODY_BYTES = 1024 * 1024;
@@ -33,6 +38,7 @@ const port = Number(process.env.PORT) || DEFAULT_PORT;
 const apiUrl = process.env.IRONFLOW_API_URL || "https://api.ironflow.sh";
 const forwardClientIP = process.env.FORWARD_CLIENT_IP === "true";
 const version = packageVersion();
+const logSalt = process.env.MCP_LOG_SALT || randomBytes(32).toString("hex");
 
 // setCors allows browser-based MCP clients (inspectors, web agents). No
 // cookies are involved, so a wildcard origin is safe.
@@ -72,8 +78,8 @@ async function readBody(req: IncomingMessage): Promise<unknown> {
   }
 }
 
-// describeRPC names what a request did for the access log, without keys,
-// IPs or arguments.
+// describeRPC names what a request did for the access log, without keys or
+// IPs. Tool arguments are logged separately (args).
 function describeRPC(body: unknown): string {
   const msgs = Array.isArray(body) ? body : [body];
   return msgs
@@ -88,8 +94,10 @@ async function handleMCP(req: IncomingMessage, res: ServerResponse, url: URL): P
   const started = Date.now();
   const key = readKey(req, url);
   const body = await readBody(req);
-  const api = new IronflowAPI(apiUrl, key, undefined, `${version}-hosted`, clientIP(req, forwardClientIP));
-  const server = createServer(api, version);
+  const ip = clientIP(req, forwardClientIP);
+  const userAgent = sanitizeClientApp(req.headers["user-agent"]);
+  const api = new IronflowAPI(apiUrl, key, undefined, `${version}-hosted`, ip);
+  const server = createServer(api, version, { fallbackClient: userAgent });
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
     enableJsonResponse: true,
@@ -98,7 +106,17 @@ async function handleMCP(req: IncomingMessage, res: ServerResponse, url: URL): P
     void transport.close();
     void server.close();
     console.log(
-      JSON.stringify({ msg: "mcp", rpc: describeRPC(body), keyed: Boolean(key), status: res.statusCode, ms: Date.now() - started })
+      JSON.stringify({
+        msg: "mcp",
+        rpc: describeRPC(body),
+        keyed: Boolean(key),
+        status: res.statusCode,
+        ms: Date.now() - started,
+        client: clientFromInitialize(body) || undefined,
+        ua: userAgent || undefined,
+        caller: callerHash(ip, logSalt) || undefined,
+        args: summarizeArgs(body) || undefined,
+      })
     );
   });
   await server.connect(transport);

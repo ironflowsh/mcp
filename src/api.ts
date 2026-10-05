@@ -1,7 +1,20 @@
 // Ironflow REST API client. Uses native fetch — no external HTTP dependencies.
 
+import { sanitizeClientApp } from "./usage.js";
+
 const DEFAULT_BASE_URL = "https://api.ironflow.sh";
 const DEFAULT_SOURCE = "hyperliquid";
+
+// CallContext names who is asking: the MCP client app (from the client's
+// initialize, or the hosted request's User-Agent) and the tool being run. It
+// rides along as X-Ironflow-Client and X-Ironflow-Tool so the API's usage log
+// can tell apps and tools apart. Never used for access decisions.
+export interface CallContext {
+  client?: string;
+  tool?: string;
+}
+
+const TOOL_PATTERN = /^[a-z0-9_]{1,48}$/;
 
 export class IronflowAPI {
   private baseUrl: string;
@@ -9,6 +22,7 @@ export class IronflowAPI {
   private source: string;
   private userAgent: string;
   private forwardedFor?: string;
+  private context: CallContext = {};
 
   // forwardedFor is set only by the hosted HTTP server: it passes the MCP
   // client's IP on so keyless rate limits apply per caller, not per server.
@@ -37,7 +51,22 @@ export class IronflowAPI {
     if (this.forwardedFor) {
       h["X-Forwarded-For"] = this.forwardedFor;
     }
+    const client = sanitizeClientApp(this.context.client);
+    if (client) h["X-Ironflow-Client"] = client;
+    if (this.context.tool && TOOL_PATTERN.test(this.context.tool)) {
+      h["X-Ironflow-Tool"] = this.context.tool;
+    }
     return h;
+  }
+
+  // withContext returns a copy of this client that tags its requests with
+  // the given caller context. A copy, so concurrent tool calls on a shared
+  // stdio client never see each other's tool name.
+  withContext(context: CallContext): IronflowAPI {
+    const copy = Object.create(IronflowAPI.prototype) as IronflowAPI;
+    Object.assign(copy, this);
+    copy.context = { ...context };
+    return copy;
   }
 
   private async apiError(res: Response): Promise<Error> {

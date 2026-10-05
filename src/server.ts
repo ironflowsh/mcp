@@ -35,8 +35,16 @@ export function packageVersion(): string {
   }
 }
 
+// ServerOptions tunes createServer for its transport.
+export interface ServerOptions {
+  // fallbackClient names the client app when the MCP session has no
+  // initialize to read it from (the stateless hosted server answers each
+  // POST with a fresh server, so it passes the request's User-Agent).
+  fallbackClient?: string;
+}
+
 // createServer wires the tool list and tool calls to one API client.
-export function createServer(api: IronflowAPI, version: string): Server {
+export function createServer(api: IronflowAPI, version: string, options: ServerOptions = {}): Server {
   const server = new Server(
     {
       name: "ironflow",
@@ -71,8 +79,10 @@ export function createServer(api: IronflowAPI, version: string): Server {
         isError: true,
       };
     }
+    const info = server.getClientVersion();
+    const client = info?.name ? `${info.name}${info.version ? `/${info.version}` : ""}` : options.fallbackClient;
     try {
-      const structured = structuredFrom(await tool.handler(args ?? {}, api));
+      const structured = structuredFrom(await tool.handler(args ?? {}, api.withContext({ client, tool: name })));
       // Compact JSON, trimmed to fit a client's per-result limit.
       const text = fitToBudget(structured);
       return { content: [{ type: "text", text }], structuredContent: JSON.parse(text) as Record<string, unknown> };
