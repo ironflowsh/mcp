@@ -15,6 +15,15 @@ export interface CallContext {
 }
 
 const TOOL_PATTERN = /^[a-z0-9_]{1,48}$/;
+const ERROR_CODE_PATTERN = /^[A-Z0-9_]{1,48}$/;
+
+// UpstreamCall is what the hosted access log records about one API request:
+// the HTTP status and, on failure, the API's error code. Never the URL, so
+// no addresses or keys end up in the log.
+export interface UpstreamCall {
+  status: number;
+  code?: string;
+}
 
 export class IronflowAPI {
   private baseUrl: string;
@@ -23,6 +32,9 @@ export class IronflowAPI {
   private userAgent: string;
   private forwardedFor?: string;
   private context: CallContext = {};
+  // Shared by every withContext copy, so the hosted server can read what
+  // the tool calls of one request did upstream.
+  private calls: UpstreamCall[] = [];
 
   // forwardedFor is set only by the hosted HTTP server: it passes the MCP
   // client's IP on so keyless rate limits apply per caller, not per server.
@@ -59,6 +71,21 @@ export class IronflowAPI {
     return h;
   }
 
+  // hasKey reports whether requests carry an API key.
+  hasKey(): boolean {
+    return Boolean(this.apiKey);
+  }
+
+  // upstreamCalls returns the status (and error code) of every API request
+  // made so far through this client or its withContext copies.
+  upstreamCalls(): UpstreamCall[] {
+    return [...this.calls];
+  }
+
+  private record(status: number, code?: string): void {
+    this.calls.push(code && ERROR_CODE_PATTERN.test(code) ? { status, code } : { status });
+  }
+
   // withContext returns a copy of this client that tags its requests with
   // the given caller context. A copy, so concurrent tool calls on a shared
   // stdio client never see each other's tool name.
@@ -77,11 +104,13 @@ export class IronflowAPI {
       };
       const code = parsed.error?.code;
       const message = parsed.error?.message;
+      this.record(res.status, code);
       if (code) {
         return new Error(`Ironflow API error ${res.status} ${code}: ${message ?? text}`);
       }
     } catch {
       // Non-JSON response — fall through to raw text.
+      this.record(res.status);
     }
     return new Error(`Ironflow API error ${res.status}: ${text}`);
   }
@@ -105,6 +134,7 @@ export class IronflowAPI {
     if (!res.ok) {
       throw await this.apiError(res);
     }
+    this.record(res.status);
 
     const ctype = res.headers.get("content-type") ?? "";
     if (ctype.includes("application/json")) {
@@ -124,6 +154,7 @@ export class IronflowAPI {
     if (!res.ok) {
       throw await this.apiError(res);
     }
+    this.record(res.status);
     return res.json();
   }
 

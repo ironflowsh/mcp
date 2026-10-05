@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { callerHash, clientFromInitialize, sanitizeClientApp, summarizeArgs } from "./usage.js";
+import { callerHash, clientFromInitialize, sanitizeClientApp, summarizeArgs, toolLogFields } from "./usage.js";
 
 describe("sanitizeClientApp", () => {
   it("keeps plain app names", () => {
@@ -57,5 +57,31 @@ describe("summarizeArgs", () => {
   it("is empty for calls without arguments and for other methods", () => {
     expect(summarizeArgs({ method: "tools/call", params: { name: "get_status" } })).toBe("");
     expect(summarizeArgs({ method: "tools/list" })).toBe("");
+  });
+});
+
+describe("toolLogFields", () => {
+  it("adds nothing for requests without tool calls", () => {
+    expect(toolLogFields([], [])).toEqual({});
+  });
+
+  it("marks a failed tool call with the upstream status and error code", () => {
+    expect(toolLogFields([{ isError: true }], [{ status: 403, code: "TIER_FORBIDDEN" }])).toEqual({
+      isError: true,
+      upstream: [403],
+      upstream_error: "TIER_FORBIDDEN",
+    });
+  });
+
+  it("logs a tool error that never reached the API", () => {
+    expect(toolLogFields([{ isError: true }], [])).toEqual({ isError: true, upstream: undefined, upstream_error: undefined });
+  });
+
+  it("logs every upstream status of a successful call", () => {
+    expect(toolLogFields([{ isError: false }], [{ status: 200 }, { status: 200 }])).toEqual({
+      isError: false,
+      upstream: [200, 200],
+      upstream_error: undefined,
+    });
   });
 });

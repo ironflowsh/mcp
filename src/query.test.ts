@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { behaviorSQL, rowsToObjects, runQuery } from "./query.js";
+import { behaviorSQL, rowsToObjects, runQuery, vaultLeaderboardSQL } from "./query.js";
 import { IronflowAPI } from "./api.js";
 
 const base = { addresses: [] as string[], label: "", sortBy: "volume" as const, limit: 20, minVolumeUsd: 0 };
@@ -50,5 +50,22 @@ describe("runQuery", () => {
     expect(post).toHaveBeenCalledWith("/v1/query", { sql: "SELECT 1", max_rows: 10 });
     expect(res.columns).toEqual(["market", "n"]);
     expect(rowsToObjects(res)).toEqual([{ market: "BTC-PERP", n: 3 }]);
+  });
+});
+
+describe("vaultLeaderboardSQL", () => {
+  it("clamps the limit to a whole number in range", () => {
+    expect(vaultLeaderboardSQL(10)).toMatch(/LIMIT 10$/);
+    expect(vaultLeaderboardSQL(2.7)).toMatch(/LIMIT 2$/);
+    expect(vaultLeaderboardSQL(0)).toMatch(/LIMIT 1$/);
+    expect(vaultLeaderboardSQL(1e9)).toMatch(/LIMIT 1000$/);
+    expect(vaultLeaderboardSQL(Number.NaN)).toMatch(/LIMIT 10$/);
+  });
+
+  it("ranks vaults by deposits minus withdrawals over 7 days", () => {
+    const sql = vaultLeaderboardSQL(10);
+    expect(sql).toContain("FROM hl.vault_operations");
+    expect(sql).toContain("INTERVAL 7 DAY");
+    expect(sql).toMatch(/ORDER BY sumIf\(net_amount, operation = 'deposit'\) - sumIf\(net_amount, operation = 'withdraw'\) DESC/);
   });
 });

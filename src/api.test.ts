@@ -44,3 +44,27 @@ describe("IronflowAPI caller context", () => {
     expect(headers()["X-Ironflow-Tool"]).toBeUndefined();
   });
 });
+
+describe("IronflowAPI upstream calls", () => {
+  it("records each status and error code, shared with withContext copies", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("{}", { headers: { "content-type": "application/json" } }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: { code: "TIER_FORBIDDEN", message: "Builder only" } }), { status: 403 })
+      )
+      .mockResolvedValueOnce(new Response("bad gateway", { status: 502 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const base = new IronflowAPI("http://api");
+    const tool = base.withContext({ tool: "get_vault_leaderboard" });
+    await tool.get("/v1/status");
+    await expect(tool.get("/v1/analytics/vault-leaderboard")).rejects.toThrow("403 TIER_FORBIDDEN");
+    await expect(tool.post("/v1/query", {})).rejects.toThrow("502");
+    expect(base.upstreamCalls()).toEqual([{ status: 200 }, { status: 403, code: "TIER_FORBIDDEN" }, { status: 502 }]);
+  });
+
+  it("reports whether a key is set", () => {
+    expect(new IronflowAPI("http://api").hasKey()).toBe(false);
+    expect(new IronflowAPI("http://api", "if_test").withContext({}).hasKey()).toBe(true);
+  });
+});

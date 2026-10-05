@@ -116,3 +116,30 @@ export async function runQuery(api: IronflowAPI, sql: string, maxRows: number): 
 export function rowsToObjects(result: { columns: string[]; rows: unknown[][] }): Record<string, unknown>[] {
   return result.rows.map((r) => Object.fromEntries(result.columns.map((c, i) => [c, r[i]])));
 }
+
+// Vault leaderboard over SQL. GET /v1/analytics/vault-leaderboard needs a
+// Builder or Enterprise key, but the same aggregation over hl.vault_operations
+// is open to every caller through /v1/query (rows limited to the caller's
+// history window), so get_vault_leaderboard uses it for everyone else.
+
+export const VAULT_LEADERBOARD_DAYS = 7;
+export const MAX_VAULT_LEADERBOARD_LIMIT = 1000;
+
+// vaultLeaderboardSQL mirrors the REST endpoint: vaults ranked by deposits
+// minus withdrawals over the last 7 days. limit is the only input and is
+// clamped to an integer, so no caller text reaches SQL.
+export function vaultLeaderboardSQL(limit: number): string {
+  const n = Math.min(Math.max(1, Math.floor(Number.isFinite(limit) ? limit : 10)), MAX_VAULT_LEADERBOARD_LIMIT);
+  return [
+    "SELECT vault,",
+    "  toString(round(sumIf(net_amount, operation = 'deposit'), 6)) AS total_deposits,",
+    "  toString(round(sumIf(net_amount, operation = 'withdraw'), 6)) AS total_withdrawals,",
+    "  toString(round(sumIf(net_amount, operation = 'deposit') - sumIf(net_amount, operation = 'withdraw'), 6)) AS net_flow,",
+    "  uniq(address) AS unique_users",
+    "FROM hl.vault_operations",
+    `WHERE ts >= now() - INTERVAL ${VAULT_LEADERBOARD_DAYS} DAY AND vault != ''`,
+    "GROUP BY vault",
+    "ORDER BY sumIf(net_amount, operation = 'deposit') - sumIf(net_amount, operation = 'withdraw') DESC",
+    `LIMIT ${n}`,
+  ].join("\n");
+}

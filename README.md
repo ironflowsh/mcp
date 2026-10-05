@@ -73,7 +73,7 @@ To host the HTTP server yourself: `npx -y -p @ironflowsh/mcp ironflow-mcp-http` 
 
 **Market data:** `get_price`, `get_recent_trades`, `get_candles`, `get_funding_rates`, `get_open_interest`, `get_liquidations`, `get_liquidation_summary`, `get_fills`, `get_mark_prices`, `get_vault_operations`, `list_markets`, `get_markets_snapshot`
 
-**Market analytics:** `get_funding_stats`, `get_pnl_leaderboard`, `get_market_top_wallets`, `get_wallet_labels`, `get_liquidation_levels` and `get_vault_leaderboard` (these two need a Builder or Enterprise key)
+**Market analytics:** `get_funding_stats`, `get_pnl_leaderboard`, `get_market_top_wallets`, `get_wallet_labels`, `get_vault_leaderboard` and `get_liquidation_levels` (needs a Builder or Enterprise key)
 
 **Signals:** `get_top_traders`, `get_market_leaders`, `get_early_movers`, `get_trader_profile`
 
@@ -96,7 +96,7 @@ Fill history covers a rolling 12 months. There is no order book, order status or
 
 ## Usage data
 
-Each API call carries two headers so we can see which apps and tools people use: `X-Ironflow-Client` (the MCP client's name and version, e.g. `claude-code/2.1.0`) and `X-Ironflow-Tool` (the tool name). The hosted server logs each request's method, tool arguments, client name, status and a salted hash of the caller's IP. It never logs IPs or API keys.
+Each API call carries two headers so we can see which apps and tools people use: `X-Ironflow-Client` (the MCP client's name and version, e.g. `claude-code/2.1.0`) and `X-Ironflow-Tool` (the tool name). The hosted server logs each request's method, tool arguments, client name, status, whether the tool returned an error, the API status and error code behind it, and a salted hash of the caller's IP. It never logs IPs or API keys.
 
 ## Links
 
