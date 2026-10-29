@@ -26,8 +26,8 @@ import { createServer as createHttpServer, IncomingMessage, ServerResponse } fro
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { IronflowAPI } from "./api.js";
 import { clientIP, HttpError, readKey } from "./request.js";
-import { createServer, packageVersion } from "./server.js";
-import { callerHash, clientFromInitialize, sanitizeClientApp, summarizeArgs } from "./usage.js";
+import { createServer, packageVersion, type ToolOutcome } from "./server.js";
+import { callerHash, clientFromInitialize, sanitizeClientApp, summarizeArgs, toolLogFields } from "./usage.js";
 
 const DEFAULT_PORT = 8080;
 const MAX_BODY_BYTES = 1024 * 1024;
@@ -97,7 +97,11 @@ async function handleMCP(req: IncomingMessage, res: ServerResponse, url: URL): P
   const ip = clientIP(req, forwardClientIP);
   const userAgent = sanitizeClientApp(req.headers["user-agent"]);
   const api = new IronflowAPI(apiUrl, key, undefined, `${version}-hosted`, ip);
-  const server = createServer(api, version, { fallbackClient: userAgent });
+  const outcomes: ToolOutcome[] = [];
+  const server = createServer(api, version, {
+    fallbackClient: userAgent,
+    onToolResult: (outcome) => outcomes.push(outcome),
+  });
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
     enableJsonResponse: true,
@@ -116,6 +120,7 @@ async function handleMCP(req: IncomingMessage, res: ServerResponse, url: URL): P
         ua: userAgent || undefined,
         caller: callerHash(ip, logSalt) || undefined,
         args: summarizeArgs(body) || undefined,
+        ...toolLogFields(outcomes, api.upstreamCalls()),
       })
     );
   });

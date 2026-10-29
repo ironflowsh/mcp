@@ -46,9 +46,11 @@ describe("tools array", () => {
     }
   });
 
-  it("every tool has name, description, inputSchema, handler", () => {
+  it("every tool has name, title, description, inputSchema, handler", () => {
     for (const tool of tools) {
       expect(tool.name).toBeTruthy();
+      expect(tool.title?.trim(), tool.name).toBeTruthy();
+      expect(tool.title.length, tool.name).toBeLessThanOrEqual(40);
       expect(tool.description).toBeTruthy();
       expect(tool.inputSchema.type).toBe("object");
       expect(typeof tool.handler).toBe("function");
@@ -288,5 +290,171 @@ describe("structuredFrom", () => {
   it("wraps arrays and plain text so a result is always an object", () => {
     expect(structuredFrom("[1,2]")).toEqual({ result: [1, 2] });
     expect(structuredFrom("hello")).toEqual({ result: "hello" });
+  });
+});
+
+// ─── Vault tools ─────────────────────────────────────────────────────────────
+
+describe("get_vault_operations", () => {
+  const tool = findTool("get_vault_operations");
+
+  it("asks for a vault or address instead of sending the API a call it rejects with 400", async () => {
+    const api = mockApi({ getVaultOperations: vi.fn() });
+    await expect(tool.handler({}, api)).rejects.toThrow(/Pass "vault".*or "address"/);
+    await expect(tool.handler({ vault: " ", limit: 5 }, api)).rejects.toThrow(/Pass "vault"/);
+    expect(api.getVaultOperations).not.toHaveBeenCalled();
+  });
+
+  it("passes the filters lowercased, as the API stores addresses", async () => {
+    const api = mockApi({ getVaultOperations: vi.fn().mockResolvedValue({ data: [] }) });
+    await tool.handler({ vault: "0xDFC24B077BC1425AD1DEA75BCB6F8158E10DF303" }, api);
+    expect(api.getVaultOperations).toHaveBeenCalledWith("0xdfc24b077bc1425ad1dea75bcb6f8158e10df303", "", "20");
+  });
+});
+
+describe("get_vault_leaderboard", () => {
+  const tool = findTool("get_vault_leaderboard");
+  const queryResponse = {
+    columns: ["vault", "total_deposits", "total_withdrawals", "net_flow", "unique_users"].map((name) => ({ name, type: "String" })),
+    rows: [["0xabc", "100", "40", "60", 3]],
+    row_count: 1,
+    truncated: false,
+    stats: {},
+    limits: { history_days: 1 },
+    budget_remaining_seconds: 59,
+  };
+
+  it("serves keyless callers from SQL, never the Builder-only endpoint", async () => {
+    const post = vi.fn().mockResolvedValue(queryResponse);
+    const api = mockApi({ hasKey: () => false, getVaultLeaderboard: vi.fn(), post });
+    const out = JSON.parse(await tool.handler({ limit: 5 }, api));
+    expect(api.getVaultLeaderboard).not.toHaveBeenCalled();
+    expect(post).toHaveBeenCalledWith("/v1/query", expect.objectContaining({ sql: expect.stringContaining("FROM hl.vault_operations") }));
+    expect((post.mock.calls[0][1] as { sql: string }).sql).toMatch(/LIMIT 5$/);
+    expect(out).toEqual({
+      window_days: 1,
+      data: [{ source: "hyperliquid", vault: "0xabc", total_deposits: "100", total_withdrawals: "40", net_flow: "60", unique_users: 3 }],
+    });
+  });
+
+  it("uses the REST endpoint for Builder keys", async () => {
+    const post = vi.fn();
+    const api = mockApi({ hasKey: () => true, getVaultLeaderboard: vi.fn().mockResolvedValue({ data: [{ vault: "0xabc" }] }), post });
+    expect(JSON.parse(await tool.handler({}, api))).toEqual({ data: [{ vault: "0xabc" }] });
+    expect(api.getVaultLeaderboard).toHaveBeenCalledWith("10");
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("falls back to SQL when the key's tier is below Builder", async () => {
+    const post = vi.fn().mockResolvedValue({ ...queryResponse, limits: { history_days: 30 } });
+    const api = mockApi({
+      hasKey: () => true,
+      getVaultLeaderboard: vi.fn().mockRejectedValue(new Error("Ironflow API error 403 TIER_FORBIDDEN: requires Builder")),
+      post,
+    });
+    expect(JSON.parse(await tool.handler({}, api)).window_days).toBe(7);
+    expect(post).toHaveBeenCalledOnce();
+  });
+
+  it("passes other API errors through", async () => {
+    const api = mockApi({
+      hasKey: () => true,
+      getVaultLeaderboard: vi.fn().mockRejectedValue(new Error("Ironflow API error 500 INTERNAL: boom")),
+      post: vi.fn(),
+    });
+    await expect(tool.handler({}, api)).rejects.toThrow("500");
+  });
+});
+
+// ─── list_markets ────────────────────────────────────────────────────────────
+
+describe("list_markets", () => {
+  const tool = findTool("list_markets");
+  const page = { data: [{ display_symbol: "xyz:NVDA-PERP", metadata: { big: 1 } }], count: 1, pagination: { next_cursor: "n1", has_more: true, total: 10 } };
+
+  it("passes q, include_inactive, limit and cursor to the API", async () => {
+    const listMarkets = vi.fn().mockResolvedValue(page);
+    const out = JSON.parse(
+      await tool.handler({ q: "nvda", include_inactive: true, limit: 20, cursor: "c0", market_class: "perp" }, mockApi({ listMarkets }))
+    );
+    expect(listMarkets).toHaveBeenCalledWith({
+      source: "",
+      marketClass: "perp",
+      issuer: undefined,
+      q: "nvda",
+      includeInactive: true,
+      limit: 20,
+      cursor: "c0",
+    });
+    expect(out).toEqual({
+      matched: 10,
+      returned: 1,
+      data: [{ display_symbol: "xyz:NVDA-PERP" }],
+      pagination: { next_cursor: "n1", has_more: true, total: 10 },
+    });
+  });
+
+  it("asks for one page of 100 by default and never more than 100", async () => {
+    const listMarkets = vi.fn().mockResolvedValue(page);
+    await tool.handler({}, mockApi({ listMarkets }));
+    await tool.handler({ limit: 5000 }, mockApi({ listMarkets }));
+    expect(listMarkets.mock.calls[0][0]).toMatchObject({ limit: 100, includeInactive: false });
+    expect(listMarkets.mock.calls[1][0]).toMatchObject({ limit: 100 });
+  });
+
+  it("still accepts search, the pre-0.11 name of q, and issuer '' for native only", async () => {
+    const listMarkets = vi.fn().mockResolvedValue(page);
+    await tool.handler({ search: "btc", issuer: "" }, mockApi({ listMarkets }));
+    expect(listMarkets.mock.calls[0][0]).toMatchObject({ q: "btc", issuer: "" });
+  });
+
+  it("rejects a non-boolean include_inactive", async () => {
+    await expect(tool.handler({ include_inactive: "yes" }, mockApi({ listMarkets: vi.fn() }))).rejects.toThrow(/true or false/);
+  });
+});
+
+// ─── Time windows ────────────────────────────────────────────────────────────
+
+describe("time window parameters", () => {
+  const W = "0x9b3cafa1209ac61f02d7bc3b219697fb171c9c91";
+
+  it("pass Unix ms, Unix seconds and ISO 8601 through for the API to read", async () => {
+    const getUserSummary = vi.fn().mockResolvedValue({});
+    const tool = findTool("get_user_summary");
+    await tool.handler({ address: W, from: 1793232000000, to: "1793318400" }, mockApi({ getUserSummary }));
+    await tool.handler({ address: W, from: "2026-10-01", to: "2026-10-02T12:00:00Z" }, mockApi({ getUserSummary }));
+    expect(getUserSummary.mock.calls[0]).toEqual([W, "1793232000000", "1793318400"]);
+    expect(getUserSummary.mock.calls[1]).toEqual([W, "2026-10-01", "2026-10-02T12:00:00Z"]);
+  });
+
+  it("leave an unset bound out", async () => {
+    const getPnLLeaderboard = vi.fn().mockResolvedValue({});
+    await findTool("get_pnl_leaderboard").handler({}, mockApi({ getPnLLeaderboard }));
+    expect(getPnLLeaderboard).toHaveBeenCalledWith("", "", 50, "realized_pnl");
+  });
+
+  it("reject text that is no time", async () => {
+    await expect(findTool("get_user_summary").handler({ address: W, from: "last tuesday" }, mockApi())).rejects.toThrow(/ISO 8601/);
+    await expect(findTool("get_user_summary").handler({ address: W, from: -5 }, mockApi())).rejects.toThrow(/ISO 8601/);
+  });
+
+  it("are declared as strings with the accepted formats", () => {
+    for (const tool of tools) {
+      for (const key of ["from", "to"]) {
+        const prop = tool.inputSchema.properties[key];
+        if (!prop) continue;
+        expect(prop.type, `${tool.name}.${key}`).toBe("string");
+        expect(prop.description, `${tool.name}.${key}`).toMatch(/ISO 8601/);
+      }
+    }
+  });
+});
+
+describe("market parameters", () => {
+  it("say that Hyperliquid names are accepted", () => {
+    for (const tool of tools) {
+      const prop = tool.inputSchema.properties.market;
+      if (prop) expect(prop.description, tool.name).toMatch(/Hyperliquid name/);
+    }
   });
 });

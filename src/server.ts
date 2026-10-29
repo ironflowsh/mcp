@@ -12,6 +12,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import type { IronflowAPI } from "./api.js";
 import { fitToBudget } from "./budget.js";
+import { attachNotice } from "./notice.js";
 import { outputSchemas } from "./schemas.js";
 import { tools } from "./tools.js";
 
@@ -21,7 +22,7 @@ const DESCRIPTION =
 
 // Server-level guidance the client shows the model alongside the tool list.
 const INSTRUCTIONS =
-  "Read-only Hyperliquid market data from Ironflow's own nodes: trades, candles, funding, open interest, liquidations, mark prices, market snapshots and wallet analytics for native perps, HIP-3 builder markets and spot. Markets use display symbols such as BTC-PERP or xyz:NVDA-PERP; call list_markets when unsure. For anything the named tools do not cover, call describe_data and then run_query with ClickHouse SQL over the hl.* tables. Keyless use allows 10 requests per minute and 24 hours of history; a free key from https://ironflow.sh/key raises that to 60 per minute and 30 days.";
+  "Read-only Hyperliquid market data from Ironflow's own nodes: trades, candles, funding, open interest, liquidations, mark prices, market snapshots and wallet analytics for native perps, HIP-3 builder markets, HIP-4 outcomes and spot. Markets take display symbols (BTC-PERP, xyz:NVDA-PERP, HYPE/USDC) or Hyperliquid names (BTC, @107, xyz:NVDA); list_markets with q finds a name. Times take Unix ms, Unix seconds or ISO 8601. A result that starts with a notice says how a market name was read or that the data starts later than asked; pass its next step on to the user. For anything the named tools do not cover, call describe_data and then run_query with ClickHouse SQL over the hl.* tables. Keyless use allows 10 requests per minute, 500 per day and 24 hours of history; a free key from https://ironflow.sh/key raises that to 60 per minute and 30 days.";
 
 // Reads the package version from package.json so MCP clients see the real
 // version in serverInfo instead of a constant that drifts on every release.
@@ -41,6 +42,21 @@ export interface ServerOptions {
   // initialize to read it from (the stateless hosted server answers each
   // POST with a fresh server, so it passes the request's User-Agent).
   fallbackClient?: string;
+  // onToolResult hears how each tool call ended, for the hosted access log.
+  onToolResult?: (result: ToolOutcome) => void;
+}
+
+type ToolResult = {
+  content: { type: "text"; text: string }[];
+  structuredContent?: Record<string, unknown>;
+  isError?: boolean;
+};
+
+// ToolOutcome is how one tool call ended: the tool and whether the result
+// went back to the client as an error.
+export interface ToolOutcome {
+  tool: string;
+  isError: boolean;
 }
 
 // createServer wires the tool list and tool calls to one API client.
@@ -61,17 +77,26 @@ export function createServer(api: IronflowAPI, version: string, options: ServerO
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
+    // Every tool only reads, from data outside this server: readOnlyHint
+    // and openWorldHint. The title appears at the top level and in the
+    // annotations, which older clients read.
     tools: tools.map((t) => ({
       name: t.name,
+      title: t.title,
       description: t.description,
       inputSchema: t.inputSchema,
       outputSchema: outputSchemas[t.name],
-      annotations: { readOnlyHint: true, openWorldHint: true },
+      annotations: { title: t.title, readOnlyHint: true, openWorldHint: true },
     })),
   }));
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
-    const { name, arguments: args } = request.params;
+    const result = await callTool(request.params.name, request.params.arguments);
+    options.onToolResult?.({ tool: request.params.name, isError: result.isError === true });
+    return result;
+  });
+
+  async function callTool(name: string, args: Record<string, unknown> | undefined): Promise<ToolResult> {
     const tool = tools.find((t) => t.name === name);
     if (!tool) {
       return {
@@ -81,16 +106,24 @@ export function createServer(api: IronflowAPI, version: string, options: ServerO
     }
     const info = server.getClientVersion();
     const client = info?.name ? `${info.name}${info.version ? `/${info.version}` : ""}` : options.fallbackClient;
+    // One client copy per call, so the notices read below are this call's.
+    const scoped = api.withContext({ client, tool: name });
     try {
-      const structured = structuredFrom(await tool.handler(args ?? {}, api.withContext({ client, tool: name })));
-      // Compact JSON, trimmed to fit a client's per-result limit.
-      const text = fitToBudget(structured);
-      return { content: [{ type: "text", text }], structuredContent: JSON.parse(text) as Record<string, unknown> };
+      const structured = structuredFrom(await tool.handler(args ?? {}, scoped));
+      // Compact JSON, trimmed to fit a client's per-result limit, with the
+      // API's notice (if any) first.
+      const text = fitToBudget(attachNotice(structured, scoped.notice()));
+      return {
+        content: [{ type: "text", text }],
+        structuredContent: JSON.parse(text) as Record<string, unknown>,
+      };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
+      const notice = scoped.notice();
+      const text = notice && !message.includes(notice) ? `Error: ${message} ${notice}` : `Error: ${message}`;
+      return { content: [{ type: "text", text }], isError: true };
     }
-  });
+  }
 
   return server;
 }

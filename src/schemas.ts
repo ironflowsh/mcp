@@ -116,7 +116,7 @@ const TRADER = {
 };
 
 // Keyed by tool name. Every tool in tools.ts has an entry (pinned by a test).
-export const outputSchemas: Record<string, Schema> = {
+const toolSchemas: Record<string, Schema> = {
   get_price: obj("Latest mark price", { market: F.market, price: F.price }),
 
   get_recent_trades: page("Trades, newest first", {
@@ -264,7 +264,18 @@ export const outputSchemas: Record<string, Schema> = {
   }),
 
   get_vault_leaderboard: obj("Vaults ranked by net deposits", {
-    data: arr("Vaults", obj("One vault", { vault: d("Vault address") })),
+    window_days: d("Days covered (keyless: 1); absent when served by the Builder endpoint"),
+    data: arr(
+      "Vaults",
+      obj("One vault", {
+        source: F.source,
+        vault: d("Vault address"),
+        total_deposits: d("USDC deposited in the window"),
+        total_withdrawals: d("USDC withdrawn in the window"),
+        net_flow: d("Deposits minus withdrawals, USDC"),
+        unique_users: d("Distinct depositors and withdrawers"),
+      })
+    ),
   }),
 
   get_funding_stats: obj("Funding statistics per time bucket", {
@@ -544,10 +555,14 @@ export const outputSchemas: Record<string, Schema> = {
     period: d("24h or 7d"),
   }),
 
-  list_markets: obj("Active markets", {
-    total_markets: d("Active markets before search"),
-    matched: d("Markets matching the search"),
+  list_markets: obj("One page of markets", {
+    matched: d("Markets matching the filters and search, across all pages"),
     returned: d("Rows in data"),
+    pagination: obj("Cursor pagination", {
+      next_cursor: d("Pass as cursor, with the same filters, for the next page; null on the last page"),
+      has_more: d("Whether more pages exist"),
+      total: d("Markets matching the filters and search"),
+    }),
     data: arr(
       "Markets",
       obj("One market", {
@@ -561,8 +576,23 @@ export const outputSchemas: Record<string, Schema> = {
         display_symbol: F.display_symbol,
         hl_coin: d("Hyperliquid coin string"),
         active_from_ms: d("Listing time, Unix milliseconds"),
+        active_to_ms: d("Close time, Unix milliseconds; only on closed markets (include_inactive)"),
         max_leverage: d("Maximum leverage"),
       })
     ),
   }),
 };
+
+// NOTICE is the line the server puts first in a result when the API said
+// something beside the data: how a Hyperliquid name was read, that the data
+// starts later than asked (the tier's history window), or a next step.
+const NOTICE = d(
+  "Present when the API added a note: how a market name was read, that data starts later than asked because of the history window, or a next step such as a free key"
+);
+
+export const outputSchemas: Record<string, Schema> = Object.fromEntries(
+  Object.entries(toolSchemas).map(([name, schema]) => [
+    name,
+    { ...schema, properties: { notice: NOTICE, ...(schema.properties as Record<string, Schema>) } },
+  ])
+);

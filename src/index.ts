@@ -5,8 +5,9 @@
 // Usage:
 //   IRONFLOW_API_KEY=if_xxx npx -y @ironflowsh/mcp
 //
-// The key is optional: keyless calls get 10 requests per minute and 24 hours
-// of history; a free key from https://ironflow.sh/key gives 60 and 30 days.
+// The key is optional: keyless calls get 10 requests per minute, 500 per day
+// and 24 hours of history; a free key from https://ironflow.sh/key gives 60
+// per minute and 30 days.
 // No install needed at all with the hosted server:
 //   claude mcp add --transport http ironflow https://mcp.ironflow.sh/mcp
 
@@ -20,7 +21,7 @@ const apiKey = process.env.IRONFLOW_API_KEY;
 if (!apiKey) {
   // stderr: stdout carries the MCP protocol.
   console.error(
-    "IRONFLOW_API_KEY is not set: running keyless (10 requests per minute, 24 hours of history). Free key for more: https://ironflow.sh/key",
+    "IRONFLOW_API_KEY is not set: running keyless (10 requests per minute, 500 per day, 24 hours of history). Free key for more: https://ironflow.sh/key",
   );
 }
 

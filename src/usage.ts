@@ -52,3 +52,21 @@ export function summarizeArgs(body: unknown): string {
   }
   return "";
 }
+
+// toolLogFields adds how a request's tool calls ended to its access-log
+// line: isError when any tool result went back as an error (the HTTP status
+// stays 200 for those), upstream with the API status of each request the
+// tools made, and upstream_error with the API's error codes. Empty for
+// requests without tool calls.
+export function toolLogFields(
+  outcomes: { isError: boolean }[],
+  upstream: { status: number; code?: string }[]
+): { isError?: boolean; upstream?: number[]; upstream_error?: string } {
+  if (outcomes.length === 0 && upstream.length === 0) return {};
+  const codes = [...new Set(upstream.map((u) => u.code).filter(Boolean))];
+  return {
+    isError: outcomes.length > 0 ? outcomes.some((o) => o.isError) : undefined,
+    upstream: upstream.length > 0 ? upstream.map((u) => u.status) : undefined,
+    upstream_error: codes.length > 0 ? codes.join(",") : undefined,
+  };
+}
