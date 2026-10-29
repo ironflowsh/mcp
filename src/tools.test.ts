@@ -290,3 +290,76 @@ describe("structuredFrom", () => {
     expect(structuredFrom("hello")).toEqual({ result: "hello" });
   });
 });
+
+// ─── Vault tools ─────────────────────────────────────────────────────────────
+
+describe("get_vault_operations", () => {
+  const tool = findTool("get_vault_operations");
+
+  it("asks for a vault or address instead of sending the API a call it rejects with 400", async () => {
+    const api = mockApi({ getVaultOperations: vi.fn() });
+    await expect(tool.handler({}, api)).rejects.toThrow(/Pass "vault".*or "address"/);
+    await expect(tool.handler({ vault: " ", limit: 5 }, api)).rejects.toThrow(/Pass "vault"/);
+    expect(api.getVaultOperations).not.toHaveBeenCalled();
+  });
+
+  it("passes the filters lowercased, as the API stores addresses", async () => {
+    const api = mockApi({ getVaultOperations: vi.fn().mockResolvedValue({ data: [] }) });
+    await tool.handler({ vault: "0xDFC24B077BC1425AD1DEA75BCB6F8158E10DF303" }, api);
+    expect(api.getVaultOperations).toHaveBeenCalledWith("0xdfc24b077bc1425ad1dea75bcb6f8158e10df303", "", "20");
+  });
+});
+
+describe("get_vault_leaderboard", () => {
+  const tool = findTool("get_vault_leaderboard");
+  const queryResponse = {
+    columns: ["vault", "total_deposits", "total_withdrawals", "net_flow", "unique_users"].map((name) => ({ name, type: "String" })),
+    rows: [["0xabc", "100", "40", "60", 3]],
+    row_count: 1,
+    truncated: false,
+    stats: {},
+    limits: { history_days: 1 },
+    budget_remaining_seconds: 59,
+  };
+
+  it("serves keyless callers from SQL, never the Builder-only endpoint", async () => {
+    const post = vi.fn().mockResolvedValue(queryResponse);
+    const api = mockApi({ hasKey: () => false, getVaultLeaderboard: vi.fn(), post });
+    const out = JSON.parse(await tool.handler({ limit: 5 }, api));
+    expect(api.getVaultLeaderboard).not.toHaveBeenCalled();
+    expect(post).toHaveBeenCalledWith("/v1/query", expect.objectContaining({ sql: expect.stringContaining("FROM hl.vault_operations") }));
+    expect((post.mock.calls[0][1] as { sql: string }).sql).toMatch(/LIMIT 5$/);
+    expect(out).toEqual({
+      window_days: 1,
+      data: [{ source: "hyperliquid", vault: "0xabc", total_deposits: "100", total_withdrawals: "40", net_flow: "60", unique_users: 3 }],
+    });
+  });
+
+  it("uses the REST endpoint for Builder keys", async () => {
+    const post = vi.fn();
+    const api = mockApi({ hasKey: () => true, getVaultLeaderboard: vi.fn().mockResolvedValue({ data: [{ vault: "0xabc" }] }), post });
+    expect(JSON.parse(await tool.handler({}, api))).toEqual({ data: [{ vault: "0xabc" }] });
+    expect(api.getVaultLeaderboard).toHaveBeenCalledWith("10");
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("falls back to SQL when the key's tier is below Builder", async () => {
+    const post = vi.fn().mockResolvedValue({ ...queryResponse, limits: { history_days: 30 } });
+    const api = mockApi({
+      hasKey: () => true,
+      getVaultLeaderboard: vi.fn().mockRejectedValue(new Error("Ironflow API error 403 TIER_FORBIDDEN: requires Builder")),
+      post,
+    });
+    expect(JSON.parse(await tool.handler({}, api)).window_days).toBe(7);
+    expect(post).toHaveBeenCalledOnce();
+  });
+
+  it("passes other API errors through", async () => {
+    const api = mockApi({
+      hasKey: () => true,
+      getVaultLeaderboard: vi.fn().mockRejectedValue(new Error("Ironflow API error 500 INTERNAL: boom")),
+      post: vi.fn(),
+    });
+    await expect(tool.handler({}, api)).rejects.toThrow("500");
+  });
+});

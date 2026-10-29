@@ -3,7 +3,17 @@
 import { IronflowAPI } from "./api.js";
 import { MAX_SUMMARY_MINUTES, summarizeLiquidations } from "./liquidations.js";
 import { MAX_LIMIT, rankSnapshot, SORT_KEYS, type SortKey } from "./snapshot.js";
-import { BEHAVIOR_LABELS, BEHAVIOR_SORT_KEYS, behaviorSQL, MAX_BEHAVIOR_LIMIT, rowsToObjects, runQuery } from "./query.js";
+import {
+  BEHAVIOR_LABELS,
+  BEHAVIOR_SORT_KEYS,
+  behaviorSQL,
+  MAX_BEHAVIOR_LIMIT,
+  MAX_VAULT_LEADERBOARD_LIMIT,
+  rowsToObjects,
+  runQuery,
+  VAULT_LEADERBOARD_DAYS,
+  vaultLeaderboardSQL,
+} from "./query.js";
 import { DEFAULT_FUNDING_ROWS, DEFAULT_MARKETS_LIMIT, shapeMarkets, shapeUserFunding, shapeWalletLabels } from "./shape.js";
 
 // Tool definition type (used for listing and calling).
@@ -276,19 +286,27 @@ export const tools: ToolDef[] = [
   },
   {
     name: "get_vault_operations",
-    description: "Deposits into and withdrawals from Hyperliquid vaults. Pass a vault address, a depositor address, or both; one is required.",
+    description:
+      "Deposits into and withdrawals from one Hyperliquid vault or one depositor. Pass vault, address, or both; at least one is required (HLP is 0xdfc24b077bc1425ad1dea75bcb6f8158e10df303). For flows across all vaults use get_vault_leaderboard.",
     inputSchema: {
       type: "object",
       properties: {
-        vault: { type: "string", description: "Vault address" },
-        address: { type: "string", description: "User address" },
+        vault: { type: "string", description: "Vault address (vault or address is required)" },
+        address: { type: "string", description: "Depositor address (vault or address is required)" },
         limit: { type: "number", description: "Number of events (1-100, default 20)" },
       },
       required: [],
     },
     handler: async (args, api) => {
-      const vault = optionalString(args, "vault", "");
-      const address = optionalString(args, "address", "");
+      // The API stores addresses lowercase and answers 400 when neither
+      // filter is set, so check here and say what to pass.
+      const vault = optionalString(args, "vault", "").trim().toLowerCase();
+      const address = optionalString(args, "address", "").trim().toLowerCase();
+      if (!vault && !address) {
+        throw new Error(
+          'Pass "vault" (a vault address, e.g. HLP 0xdfc24b077bc1425ad1dea75bcb6f8158e10df303) or "address" (a depositor), or both. For flows across all vaults use get_vault_leaderboard.'
+        );
+      }
       const limit = optionalNumber(args, "limit", 20);
       const data = await api.getVaultOperations(vault, address, String(limit));
       return JSON.stringify(data, null, 2);
@@ -317,18 +335,36 @@ export const tools: ToolDef[] = [
   },
   {
     name: "get_vault_leaderboard",
-    description: "Hyperliquid vaults ranked by net deposits. Needs a Builder or Enterprise key; keyless and free-key calls return 403.",
+    description: `Hyperliquid vaults ranked by net deposits (deposits minus withdrawals) over the last ${VAULT_LEADERBOARD_DAYS} days, with depositor counts. Keyless calls see the last 24 hours; a free key from https://ironflow.sh/key gives the full ${VAULT_LEADERBOARD_DAYS} days.`,
     inputSchema: {
       type: "object",
       properties: {
-        limit: { type: "number", description: "Number of vaults (default 10)" },
+        limit: { type: "number", description: `Number of vaults (default 10, max ${MAX_VAULT_LEADERBOARD_LIMIT})` },
       },
       required: [],
     },
     handler: async (args, api) => {
       const limit = optionalNumber(args, "limit", 10);
-      const data = await api.getVaultLeaderboard(String(limit));
-      return JSON.stringify(data, null, 2);
+      // GET /v1/analytics/vault-leaderboard is Builder and Enterprise only
+      // (403 TIER_FORBIDDEN otherwise). Keyed callers try it first; everyone
+      // else, and keys below Builder, get the same ranking from SQL.
+      if (api.hasKey()) {
+        try {
+          return JSON.stringify(await api.getVaultLeaderboard(String(limit)), null, 2);
+        } catch (err) {
+          if (!(err instanceof Error && err.message.includes("TIER_FORBIDDEN"))) throw err;
+        }
+      }
+      const res = (await runQuery(api, vaultLeaderboardSQL(limit), MAX_VAULT_LEADERBOARD_LIMIT)) as {
+        columns: string[];
+        rows: unknown[][];
+        limits?: { history_days?: number };
+      };
+      const historyDays = res.limits?.history_days;
+      return JSON.stringify({
+        window_days: historyDays ? Math.min(historyDays, VAULT_LEADERBOARD_DAYS) : VAULT_LEADERBOARD_DAYS,
+        data: rowsToObjects(res).map((row) => ({ source: "hyperliquid", ...row })),
+      });
     },
   },
   {

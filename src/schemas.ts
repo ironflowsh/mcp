@@ -264,7 +264,18 @@ export const outputSchemas: Record<string, Schema> = {
   }),
 
   get_vault_leaderboard: obj("Vaults ranked by net deposits", {
-    data: arr("Vaults", obj("One vault", { vault: d("Vault address") })),
+    window_days: d("Days covered (keyless: 1); absent when served by the Builder endpoint"),
+    data: arr(
+      "Vaults",
+      obj("One vault", {
+        source: F.source,
+        vault: d("Vault address"),
+        total_deposits: d("USDC deposited in the window"),
+        total_withdrawals: d("USDC withdrawn in the window"),
+        net_flow: d("Deposits minus withdrawals, USDC"),
+        unique_users: d("Distinct depositors and withdrawers"),
+      })
+    ),
   }),
 
   get_funding_stats: obj("Funding statistics per time bucket", {

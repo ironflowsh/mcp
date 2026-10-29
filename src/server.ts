@@ -41,6 +41,21 @@ export interface ServerOptions {
   // initialize to read it from (the stateless hosted server answers each
   // POST with a fresh server, so it passes the request's User-Agent).
   fallbackClient?: string;
+  // onToolResult hears how each tool call ended, for the hosted access log.
+  onToolResult?: (result: ToolOutcome) => void;
+}
+
+type ToolResult = {
+  content: { type: "text"; text: string }[];
+  structuredContent?: Record<string, unknown>;
+  isError?: boolean;
+};
+
+// ToolOutcome is how one tool call ended: the tool and whether the result
+// went back to the client as an error.
+export interface ToolOutcome {
+  tool: string;
+  isError: boolean;
 }
 
 // createServer wires the tool list and tool calls to one API client.
@@ -71,7 +86,12 @@ export function createServer(api: IronflowAPI, version: string, options: ServerO
   }));
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
-    const { name, arguments: args } = request.params;
+    const result = await callTool(request.params.name, request.params.arguments);
+    options.onToolResult?.({ tool: request.params.name, isError: result.isError === true });
+    return result;
+  });
+
+  async function callTool(name: string, args: Record<string, unknown> | undefined): Promise<ToolResult> {
     const tool = tools.find((t) => t.name === name);
     if (!tool) {
       return {
@@ -85,12 +105,15 @@ export function createServer(api: IronflowAPI, version: string, options: ServerO
       const structured = structuredFrom(await tool.handler(args ?? {}, api.withContext({ client, tool: name })));
       // Compact JSON, trimmed to fit a client's per-result limit.
       const text = fitToBudget(structured);
-      return { content: [{ type: "text", text }], structuredContent: JSON.parse(text) as Record<string, unknown> };
+      return {
+        content: [{ type: "text", text }],
+        structuredContent: JSON.parse(text) as Record<string, unknown>,
+      };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
     }
-  });
+  }
 
   return server;
 }
