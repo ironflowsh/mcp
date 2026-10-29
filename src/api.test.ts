@@ -68,3 +68,70 @@ describe("IronflowAPI upstream calls", () => {
     expect(new IronflowAPI("http://api", "if_test").withContext({}).hasKey()).toBe(true);
   });
 });
+
+describe("IronflowAPI notices", () => {
+  const json = (body: unknown, init: ResponseInit = {}) =>
+    new Response(JSON.stringify(body), { ...init, headers: { "content-type": "application/json", ...(init.headers ?? {}) } });
+
+  it("collects notice headers per withContext copy", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(json({ data: [] }, { headers: { "X-Ironflow-Market": "BTC-PERP" } }))
+    );
+    const base = new IronflowAPI("http://api");
+    const a = base.withContext({ tool: "get_candles" });
+    const b = base.withContext({ tool: "get_price" });
+    await a.get("/v1/candles", { market: "BTC" });
+    expect(a.notice()).toBe('Market "BTC" was read as BTC-PERP.');
+    expect(b.notice()).toBe("");
+  });
+
+  it("reads notices on error responses too, and keeps the API's message, detail and Retry-After", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        json(
+          { error: { code: "KEYLESS_DAILY_LIMIT", message: "keyless access allows 500 requests per day from one IP: https://ironflow.sh/key", detail: "per IP" } },
+          { status: 429, headers: { "Retry-After": "3600" } }
+        )
+      )
+    );
+    const api = new IronflowAPI("http://api").withContext({});
+    await expect(api.get("/v1/trades", { market: "BTC-PERP" })).rejects.toThrow(
+      "Ironflow API error 429 KEYLESS_DAILY_LIMIT: keyless access allows 500 requests per day from one IP: https://ironflow.sh/key (per IP) Retry after 3600 s."
+    );
+  });
+});
+
+describe("IronflowAPI.listMarkets", () => {
+  function urlOf(call: unknown): URL {
+    return new URL((call as [string])[0]);
+  }
+
+  it("passes q, include_inactive, limit and cursor through", async () => {
+    const fetchMock = vi.fn(async () => new Response("{}", { headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    await new IronflowAPI("http://api").listMarkets({ q: "nvda", includeInactive: true, limit: 50, cursor: "abc", marketClass: "perp" });
+    const url = urlOf(fetchMock.mock.calls[0]);
+    expect(url.pathname).toBe("/v1/markets");
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      q: "nvda",
+      include_inactive: "true",
+      limit: "50",
+      cursor: "abc",
+      market_class: "perp",
+      source: "hyperliquid",
+    });
+  });
+
+  it("sends issuer= for native-only and leaves issuer out when not asked", async () => {
+    const fetchMock = vi.fn(async () => new Response("{}", { headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const api = new IronflowAPI("http://api");
+    await api.listMarkets({ issuer: "" });
+    await api.listMarkets({});
+    expect(urlOf(fetchMock.mock.calls[0]).searchParams.has("issuer")).toBe(true);
+    expect(urlOf(fetchMock.mock.calls[0]).searchParams.get("issuer")).toBe("");
+    expect(urlOf(fetchMock.mock.calls[1]).searchParams.has("issuer")).toBe(false);
+  });
+});

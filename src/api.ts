@@ -1,5 +1,6 @@
 // Ironflow REST API client. Uses native fetch — no external HTTP dependencies.
 
+import { type ApiNotice, formatNotices, readNotice } from "./notice.js";
 import { sanitizeClientApp } from "./usage.js";
 
 const DEFAULT_BASE_URL = "https://api.ironflow.sh";
@@ -16,6 +17,19 @@ export interface CallContext {
 
 const TOOL_PATTERN = /^[a-z0-9_]{1,48}$/;
 const ERROR_CODE_PATTERN = /^[A-Z0-9_]{1,48}$/;
+const MAX_NOTICES = 20;
+
+// MarketsQuery is GET /v1/markets' filter and page. issuer is tri-state:
+// undefined = every issuer, "" = native markets only, "xyz" = that issuer.
+export interface MarketsQuery {
+  source?: string;
+  marketClass?: string;
+  issuer?: string;
+  q?: string;
+  includeInactive?: boolean;
+  limit?: number;
+  cursor?: string;
+}
 
 // UpstreamCall is what the hosted access log records about one API request:
 // the HTTP status and, on failure, the API's error code. Never the URL, so
@@ -35,6 +49,9 @@ export class IronflowAPI {
   // Shared by every withContext copy, so the hosted server can read what
   // the tool calls of one request did upstream.
   private calls: UpstreamCall[] = [];
+  // Notice headers of this copy's responses: one withContext copy per tool
+  // call, so a tool result carries only its own notices.
+  private notices: ApiNotice[] = [];
 
   // forwardedFor is set only by the hosted HTTP server: it passes the MCP
   // client's IP on so keyless rate limits apply per caller, not per server.
@@ -93,31 +110,53 @@ export class IronflowAPI {
     const copy = Object.create(IronflowAPI.prototype) as IronflowAPI;
     Object.assign(copy, this);
     copy.context = { ...context };
+    copy.notices = [];
     return copy;
   }
 
+  // notice returns what the API said beside the data of this client's
+  // responses (a resolved market name, history cut short by the tier, a
+  // next step), as one line for the agent; "" when it said nothing.
+  notice(): string {
+    return formatNotices(this.notices);
+  }
+
+  private noteHeaders(res: Response, requestedMarket?: string): void {
+    const n = readNotice(res.headers, requestedMarket);
+    if (n && this.notices.length < MAX_NOTICES) this.notices.push(n);
+  }
+
+  // apiError keeps the API's code, message and detail: the message names the
+  // next step (a free key, a narrower window), which the agent passes on.
   private async apiError(res: Response): Promise<Error> {
     const text = await res.text();
+    const retry = Number(res.headers.get("retry-after"));
+    const retryNote = Number.isFinite(retry) && retry > 0 ? ` Retry after ${retry} s.` : "";
     try {
       const parsed = JSON.parse(text) as {
-        error?: { code?: string; message?: string };
+        error?: { code?: string; message?: string; detail?: string };
       };
       const code = parsed.error?.code;
       const message = parsed.error?.message;
+      const detail = parsed.error?.detail ? ` (${parsed.error.detail})` : "";
       this.record(res.status, code);
       if (code) {
-        return new Error(`Ironflow API error ${res.status} ${code}: ${message ?? text}`);
+        return new Error(`Ironflow API error ${res.status} ${code}: ${message ?? text}${detail}${retryNote}`);
       }
     } catch {
       // Non-JSON response — fall through to raw text.
       this.record(res.status);
     }
-    return new Error(`Ironflow API error ${res.status}: ${text}`);
+    return new Error(`Ironflow API error ${res.status}: ${text}${retryNote}`);
   }
 
+  // get sends a GET with the given query. Empty values are left out, except
+  // keys named in keepEmpty, where an empty value means something (issuer=
+  // asks /v1/markets for native markets only).
   async get(
     path: string,
-    params: Record<string, string> = {}
+    params: Record<string, string> = {},
+    keepEmpty: readonly string[] = []
   ): Promise<unknown> {
     // Always include source.
     if (!params.source) {
@@ -126,10 +165,11 @@ export class IronflowAPI {
 
     const url = new URL(path, this.baseUrl);
     for (const [k, v] of Object.entries(params)) {
-      if (v) url.searchParams.set(k, v);
+      if (v || (v === "" && keepEmpty.includes(k))) url.searchParams.set(k, v);
     }
 
     const res = await fetch(url.toString(), { headers: this.headers() });
+    this.noteHeaders(res, params.market || params.coin);
 
     if (!res.ok) {
       throw await this.apiError(res);
@@ -151,6 +191,7 @@ export class IronflowAPI {
       headers: this.headers(),
       body: JSON.stringify(body),
     });
+    this.noteHeaders(res);
     if (!res.ok) {
       throw await this.apiError(res);
     }
@@ -244,40 +285,37 @@ export class IronflowAPI {
   async getUserFunding(
     address: string,
     market: string = "",
-    from: number = 0,
-    to: number = 0,
+    from = "",
+    to = "",
     bucket: string = "1d",
   ): Promise<unknown> {
     const params: Record<string, string> = { address, bucket };
     if (market) params.market = market;
-    if (from > 0) params.from = String(from);
-    if (to > 0) params.to = String(to);
+    setWindow(params, from, to);
     return this.get("/v1/analytics/user-funding", params);
   }
 
   async getUserMakerTaker(
     address: string,
     market: string = "",
-    from: number = 0,
-    to: number = 0,
+    from = "",
+    to = "",
   ): Promise<unknown> {
     const params: Record<string, string> = { address };
     if (market) params.market = market;
-    if (from > 0) params.from = String(from);
-    if (to > 0) params.to = String(to);
+    setWindow(params, from, to);
     return this.get("/v1/analytics/user-maker-taker", params);
   }
 
   async getUserLedger(
     address: string,
-    from: number = 0,
-    to: number = 0,
+    from = "",
+    to = "",
     eventTypes: string = "",
     limit: number = 1000,
   ): Promise<unknown> {
     const params: Record<string, string> = { address, limit: String(limit) };
-    if (from > 0) params.from = String(from);
-    if (to > 0) params.to = String(to);
+    setWindow(params, from, to);
     if (eventTypes) params.event_types = eventTypes;
     return this.get("/v1/analytics/user-ledger", params);
   }
@@ -285,8 +323,8 @@ export class IronflowAPI {
   // ─── Cross-wallet ranking (v0.34+) ───────────────────────────────────
 
   async getPnLLeaderboard(
-    from: number = 0,
-    to: number = 0,
+    from = "",
+    to = "",
     limit: number = 50,
     sortBy: string = "realized_pnl",
   ): Promise<unknown> {
@@ -294,15 +332,14 @@ export class IronflowAPI {
       limit: String(limit),
       sort_by: sortBy,
     };
-    if (from > 0) params.from = String(from);
-    if (to > 0) params.to = String(to);
+    setWindow(params, from, to);
     return this.get("/v1/analytics/leaderboard-pnl", params);
   }
 
   async getMarketTopWallets(
     market: string,
-    from: number = 0,
-    to: number = 0,
+    from = "",
+    to = "",
     limit: number = 25,
     sortBy: string = "volume",
   ): Promise<unknown> {
@@ -311,8 +348,7 @@ export class IronflowAPI {
       limit: String(limit),
       sort_by: sortBy,
     };
-    if (from > 0) params.from = String(from);
-    if (to > 0) params.to = String(to);
+    setWindow(params, from, to);
     return this.get("/v1/analytics/market-top-wallets", params);
   }
 
@@ -332,24 +368,22 @@ export class IronflowAPI {
 
   async getUserSummary(
     address: string,
-    from: number = 0,
-    to: number = 0,
+    from = "",
+    to = "",
   ): Promise<unknown> {
     const params: Record<string, string> = { address };
-    if (from > 0) params.from = String(from);
-    if (to > 0) params.to = String(to);
+    setWindow(params, from, to);
     return this.get("/v1/analytics/user-summary", params);
   }
 
   async getUserPnLSeries(
     address: string,
-    from: number = 0,
-    to: number = 0,
+    from = "",
+    to = "",
     bucketMs: number = 0,
   ): Promise<unknown> {
     const params: Record<string, string> = { address };
-    if (from > 0) params.from = String(from);
-    if (to > 0) params.to = String(to);
+    setWindow(params, from, to);
     if (bucketMs > 0) params.bucket_ms = String(bucketMs);
     return this.get("/v1/analytics/user-pnl-series", params);
   }
@@ -390,16 +424,22 @@ export class IronflowAPI {
     return this.get("/v1/status/history", params);
   }
 
-  async listMarkets(
-    source: string = "",
-    market_class: string = "",
-    issuer: string | undefined = undefined,
-  ): Promise<unknown> {
+  async listMarkets(query: MarketsQuery = {}): Promise<unknown> {
     const params: Record<string, string> = {};
-    if (source) params.source = source;
-    if (market_class) params.market_class = market_class;
-    // issuer is tri-state: undefined = no filter, "" = native only, "flx" = flx only.
-    if (issuer !== undefined) params.issuer = issuer;
-    return this.get("/v1/markets", params);
+    if (query.source) params.source = query.source;
+    if (query.marketClass) params.market_class = query.marketClass;
+    if (query.issuer !== undefined) params.issuer = query.issuer;
+    if (query.q) params.q = query.q;
+    if (query.includeInactive) params.include_inactive = "true";
+    if (query.limit) params.limit = String(query.limit);
+    if (query.cursor) params.cursor = query.cursor;
+    return this.get("/v1/markets", params, ["issuer"]);
   }
+}
+
+// setWindow adds from and to when set. Both pass through as the caller gave
+// them: the API reads Unix ms, Unix seconds and ISO 8601.
+function setWindow(params: Record<string, string>, from: string, to: string): void {
+  if (from) params.from = from;
+  if (to) params.to = to;
 }

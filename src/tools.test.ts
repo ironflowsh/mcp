@@ -46,9 +46,11 @@ describe("tools array", () => {
     }
   });
 
-  it("every tool has name, description, inputSchema, handler", () => {
+  it("every tool has name, title, description, inputSchema, handler", () => {
     for (const tool of tools) {
       expect(tool.name).toBeTruthy();
+      expect(tool.title?.trim(), tool.name).toBeTruthy();
+      expect(tool.title.length, tool.name).toBeLessThanOrEqual(40);
       expect(tool.description).toBeTruthy();
       expect(tool.inputSchema.type).toBe("object");
       expect(typeof tool.handler).toBe("function");
@@ -361,5 +363,98 @@ describe("get_vault_leaderboard", () => {
       post: vi.fn(),
     });
     await expect(tool.handler({}, api)).rejects.toThrow("500");
+  });
+});
+
+// ─── list_markets ────────────────────────────────────────────────────────────
+
+describe("list_markets", () => {
+  const tool = findTool("list_markets");
+  const page = { data: [{ display_symbol: "xyz:NVDA-PERP", metadata: { big: 1 } }], count: 1, pagination: { next_cursor: "n1", has_more: true, total: 10 } };
+
+  it("passes q, include_inactive, limit and cursor to the API", async () => {
+    const listMarkets = vi.fn().mockResolvedValue(page);
+    const out = JSON.parse(
+      await tool.handler({ q: "nvda", include_inactive: true, limit: 20, cursor: "c0", market_class: "perp" }, mockApi({ listMarkets }))
+    );
+    expect(listMarkets).toHaveBeenCalledWith({
+      source: "",
+      marketClass: "perp",
+      issuer: undefined,
+      q: "nvda",
+      includeInactive: true,
+      limit: 20,
+      cursor: "c0",
+    });
+    expect(out).toEqual({
+      matched: 10,
+      returned: 1,
+      data: [{ display_symbol: "xyz:NVDA-PERP" }],
+      pagination: { next_cursor: "n1", has_more: true, total: 10 },
+    });
+  });
+
+  it("asks for one page of 100 by default and never more than 100", async () => {
+    const listMarkets = vi.fn().mockResolvedValue(page);
+    await tool.handler({}, mockApi({ listMarkets }));
+    await tool.handler({ limit: 5000 }, mockApi({ listMarkets }));
+    expect(listMarkets.mock.calls[0][0]).toMatchObject({ limit: 100, includeInactive: false });
+    expect(listMarkets.mock.calls[1][0]).toMatchObject({ limit: 100 });
+  });
+
+  it("still accepts search, the pre-0.11 name of q, and issuer '' for native only", async () => {
+    const listMarkets = vi.fn().mockResolvedValue(page);
+    await tool.handler({ search: "btc", issuer: "" }, mockApi({ listMarkets }));
+    expect(listMarkets.mock.calls[0][0]).toMatchObject({ q: "btc", issuer: "" });
+  });
+
+  it("rejects a non-boolean include_inactive", async () => {
+    await expect(tool.handler({ include_inactive: "yes" }, mockApi({ listMarkets: vi.fn() }))).rejects.toThrow(/true or false/);
+  });
+});
+
+// ─── Time windows ────────────────────────────────────────────────────────────
+
+describe("time window parameters", () => {
+  const W = "0x9b3cafa1209ac61f02d7bc3b219697fb171c9c91";
+
+  it("pass Unix ms, Unix seconds and ISO 8601 through for the API to read", async () => {
+    const getUserSummary = vi.fn().mockResolvedValue({});
+    const tool = findTool("get_user_summary");
+    await tool.handler({ address: W, from: 1793232000000, to: "1793318400" }, mockApi({ getUserSummary }));
+    await tool.handler({ address: W, from: "2026-10-01", to: "2026-10-02T12:00:00Z" }, mockApi({ getUserSummary }));
+    expect(getUserSummary.mock.calls[0]).toEqual([W, "1793232000000", "1793318400"]);
+    expect(getUserSummary.mock.calls[1]).toEqual([W, "2026-10-01", "2026-10-02T12:00:00Z"]);
+  });
+
+  it("leave an unset bound out", async () => {
+    const getPnLLeaderboard = vi.fn().mockResolvedValue({});
+    await findTool("get_pnl_leaderboard").handler({}, mockApi({ getPnLLeaderboard }));
+    expect(getPnLLeaderboard).toHaveBeenCalledWith("", "", 50, "realized_pnl");
+  });
+
+  it("reject text that is no time", async () => {
+    await expect(findTool("get_user_summary").handler({ address: W, from: "last tuesday" }, mockApi())).rejects.toThrow(/ISO 8601/);
+    await expect(findTool("get_user_summary").handler({ address: W, from: -5 }, mockApi())).rejects.toThrow(/ISO 8601/);
+  });
+
+  it("are declared as strings with the accepted formats", () => {
+    for (const tool of tools) {
+      for (const key of ["from", "to"]) {
+        const prop = tool.inputSchema.properties[key];
+        if (!prop) continue;
+        expect(prop.type, `${tool.name}.${key}`).toBe("string");
+        expect(prop.description, `${tool.name}.${key}`).toMatch(/ISO 8601/);
+      }
+    }
+  });
+});
+
+describe("market parameters", () => {
+  it("say that Hyperliquid names are accepted", () => {
+    for (const tool of tools) {
+      const prop = tool.inputSchema.properties.market;
+      if (prop) expect(prop.description, tool.name).toMatch(/Hyperliquid name/);
+    }
   });
 });
