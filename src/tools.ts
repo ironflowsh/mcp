@@ -99,7 +99,7 @@ export const tools: ToolDef[] = [
     name: "describe_data",
     title: "Describe SQL tables",
     description:
-      "Start here for any Hyperliquid question the other tools do not answer directly. Returns the SQL tables you can query with run_query (every fill, per-wallet daily totals, wallet behaviour labels, funding, mark and oracle prices, open interest, liquidations, builder-code fills, transfers, vault flows), their columns, how far back each goes, query tips, worked examples and your own limits.",
+      "Returns the SQL tables of Ironflow's Hyperliquid data (every fill, per-wallet daily totals, wallet behaviour labels, funding, mark and oracle prices, open interest, liquidations, builder-code fills, transfers, vault flows), their columns, how far back each goes, query tips, worked examples and your own limits.",
     inputSchema: { type: "object", properties: {}, required: [] },
     handler: async (_args, api) => JSON.stringify(await api.get("/v1/query/schema")),
   },
@@ -107,7 +107,7 @@ export const tools: ToolDef[] = [
     name: "run_query",
     title: "Run SQL query",
     description:
-      "Run one read-only ClickHouse SELECT over Ironflow's Hyperliquid tables (hl.fills, hl.wallet_daily, hl.wallet_behavior, hl.funding, hl.mark_prices, hl.oracle_prices, hl.open_interest, hl.liquidations, hl.builder_fills, hl.transfers, hl.vault_operations). Call describe_data first for columns and examples. Aggregate in SQL: results are capped (1,000 rows keyless). Keyless: last 24 hours, 5 s per query, 60 query seconds per hour per IP; a free key from https://ironflow.sh/key gives 30 days of history.",
+      "Run one read-only ClickHouse SELECT over Ironflow's Hyperliquid tables (hl.fills, hl.wallet_daily, hl.wallet_behavior, hl.funding, hl.mark_prices, hl.oracle_prices, hl.open_interest, hl.liquidations, hl.builder_fills, hl.transfers, hl.vault_operations). Aggregate in SQL: results are capped (1,000 rows keyless). Keyless: last 24 hours, 5 s per query, 60 query seconds per hour per IP; a free key from https://ironflow.sh/key gives 30 days of history.",
     inputSchema: {
       type: "object",
       properties: {
@@ -335,7 +335,7 @@ export const tools: ToolDef[] = [
     name: "get_vault_operations",
     title: "Vault deposits and withdrawals",
     description:
-      "Deposits into and withdrawals from one Hyperliquid vault or one depositor. Pass vault, address, or both; at least one is required (HLP is 0xdfc24b077bc1425ad1dea75bcb6f8158e10df303). For flows across all vaults use get_vault_leaderboard.",
+      "Deposits into and withdrawals from one Hyperliquid vault or one depositor. Pass vault, address, or both; at least one is required (HLP is 0xdfc24b077bc1425ad1dea75bcb6f8158e10df303).",
     inputSchema: {
       type: "object",
       properties: {
@@ -821,7 +821,7 @@ export const tools: ToolDef[] = [
   {
     name: "get_cohort_addresses",
     title: "Cohort addresses",
-    description: "Wallet addresses in one cohort; list_cohorts gives the names.",
+    description: "Wallet addresses in one named wallet cohort.",
     inputSchema: {
       type: "object",
       properties: {
