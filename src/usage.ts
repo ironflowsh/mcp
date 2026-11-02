@@ -7,6 +7,9 @@ import { createHmac } from "node:crypto";
 const MAX_CLIENT_APP_LEN = 64;
 const MAX_ARGS_LEN = 600;
 const CALLER_HASH_LEN = 16;
+const MAX_ERROR_LEN = 160;
+const CLIENT_MEMORY_MS = 60 * 60 * 1000;
+const MAX_REMEMBERED_CLIENTS = 10_000;
 const CLIENT_APP_PATTERN = /^[A-Za-z0-9 ._/@()+:-]*$/;
 
 type RPCMessage = { method?: string; params?: { name?: string; arguments?: unknown; clientInfo?: { name?: string; version?: string } } };
@@ -55,18 +58,50 @@ export function summarizeArgs(body: unknown): string {
 
 // toolLogFields adds how a request's tool calls ended to its access-log
 // line: isError when any tool result went back as an error (the HTTP status
-// stays 200 for those), upstream with the API status of each request the
-// tools made, and upstream_error with the API's error codes. Empty for
-// requests without tool calls.
+// stays 200 for those), error with the first error's text (so a failure
+// that never reached the API still says why), upstream with the API status
+// of each request the tools made, and upstream_error with the API's error
+// codes. Empty for requests without tool calls.
 export function toolLogFields(
-  outcomes: { isError: boolean }[],
+  outcomes: { isError: boolean; error?: string }[],
   upstream: { status: number; code?: string }[]
-): { isError?: boolean; upstream?: number[]; upstream_error?: string } {
+): { isError?: boolean; error?: string; upstream?: number[]; upstream_error?: string } {
   if (outcomes.length === 0 && upstream.length === 0) return {};
   const codes = [...new Set(upstream.map((u) => u.code).filter(Boolean))];
+  const firstError = outcomes.find((o) => o.isError && o.error)?.error;
   return {
     isError: outcomes.length > 0 ? outcomes.some((o) => o.isError) : undefined,
+    error: firstError ? firstError.replace(/\s+/g, " ").slice(0, MAX_ERROR_LEN) : undefined,
     upstream: upstream.length > 0 ? upstream.map((u) => u.status) : undefined,
     upstream_error: codes.length > 0 ? codes.join(",") : undefined,
   };
+}
+
+// The hosted server is stateless, so a tools/call arrives without the
+// clientInfo its client sent at initialize. ClientMemory keeps the app name
+// per caller hash for an hour, so later requests from the same caller can be
+// attributed to it in the log and in X-Ironflow-Client. Several apps behind
+// one IP share a hash; the log marks such names as recalled.
+export class ClientMemory {
+  private readonly names = new Map<string, { client: string; at: number }>();
+
+  remember(caller: string, client: string, now = Date.now()): void {
+    if (!caller || !client) return;
+    this.names.delete(caller);
+    this.names.set(caller, { client, at: now });
+    if (this.names.size > MAX_REMEMBERED_CLIENTS) {
+      const oldest = this.names.keys().next().value;
+      if (oldest !== undefined) this.names.delete(oldest);
+    }
+  }
+
+  recall(caller: string, now = Date.now()): string {
+    const hit = caller ? this.names.get(caller) : undefined;
+    if (!hit) return "";
+    if (now - hit.at > CLIENT_MEMORY_MS) {
+      this.names.delete(caller);
+      return "";
+    }
+    return hit.client;
+  }
 }

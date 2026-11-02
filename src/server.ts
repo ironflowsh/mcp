@@ -52,11 +52,12 @@ type ToolResult = {
   isError?: boolean;
 };
 
-// ToolOutcome is how one tool call ended: the tool and whether the result
-// went back to the client as an error.
+// ToolOutcome is how one tool call ended: the tool, whether the result went
+// back to the client as an error, and if so the error text.
 export interface ToolOutcome {
   tool: string;
   isError: boolean;
+  error?: string;
 }
 
 // createServer wires the tool list and tool calls to one API client.
@@ -92,7 +93,8 @@ export function createServer(api: IronflowAPI, version: string, options: ServerO
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const result = await callTool(request.params.name, request.params.arguments);
-    options.onToolResult?.({ tool: request.params.name, isError: result.isError === true });
+    const isError = result.isError === true;
+    options.onToolResult?.({ tool: request.params.name, isError, error: isError ? result.content[0]?.text : undefined });
     return result;
   });
 

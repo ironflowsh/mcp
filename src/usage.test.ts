@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { callerHash, clientFromInitialize, sanitizeClientApp, summarizeArgs, toolLogFields } from "./usage.js";
+import { callerHash, ClientMemory, clientFromInitialize, sanitizeClientApp, summarizeArgs, toolLogFields } from "./usage.js";
 
 describe("sanitizeClientApp", () => {
   it("keeps plain app names", () => {
@@ -83,5 +83,33 @@ describe("toolLogFields", () => {
       upstream: [200, 200],
       upstream_error: undefined,
     });
+  });
+});
+
+describe("toolLogFields error text", () => {
+  it("keeps the first error's text, flattened and truncated", () => {
+    const f = toolLogFields([{ isError: false }, { isError: true, error: "Error: address\nis required" }, { isError: true, error: "later" }], []);
+    expect(f.isError).toBe(true);
+    expect(f.error).toBe("Error: address is required");
+    expect(toolLogFields([{ isError: true, error: "x".repeat(400) }], []).error).toHaveLength(160);
+  });
+  it("has no error text for successful calls", () => {
+    expect(toolLogFields([{ isError: false }], []).error).toBeUndefined();
+  });
+});
+
+describe("ClientMemory", () => {
+  it("recalls a caller's app for an hour", () => {
+    const m = new ClientMemory();
+    m.remember("abc", "codex-mcp-client/0.166.0", 0);
+    expect(m.recall("abc", 30 * 60 * 1000)).toBe("codex-mcp-client/0.166.0");
+    expect(m.recall("abc", 61 * 60 * 1000)).toBe("");
+  });
+  it("ignores empty callers and names", () => {
+    const m = new ClientMemory();
+    m.remember("", "x", 0);
+    m.remember("abc", "", 0);
+    expect(m.recall("", 0)).toBe("");
+    expect(m.recall("abc", 0)).toBe("");
   });
 });
