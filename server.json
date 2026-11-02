@@ -1,23 +1,24 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.ironflowsh/mcp",
+  "name": "io.github.ironflowsh/hyperliquid",
+  "title": "Ironflow: Hyperliquid data",
   "description": "Read-only Hyperliquid data for AI agents: fills, candles, funding, liquidations, wallet analytics.",
   "repository": {
     "url": "https://github.com/ironflowsh/mcp",
     "source": "github"
   },
-  "version": "0.11.1",
+  "version": "0.11.2",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@ironflowsh/mcp",
-      "version": "0.11.1",
+      "version": "0.11.2",
       "transport": {
         "type": "stdio"
       },
       "environmentVariables": [
         {
-          "description": "Optional Ironflow API key. Keyless calls get 10 requests per minute and 500 per day; a free key from https://ironflow.sh/key gives 60.",
+          "description": "Optional Ironflow API key. Keyless calls get 30 requests per minute and 2,000 per day; a free key from https://ironflow.sh/key gives 60.",
           "isRequired": false,
           "format": "string",
           "isSecret": true,
