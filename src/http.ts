@@ -27,7 +27,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { IronflowAPI } from "./api.js";
 import { clientIP, HttpError, readKey } from "./request.js";
 import { createServer, packageVersion, type ToolOutcome } from "./server.js";
-import { callerHash, clientFromInitialize, sanitizeClientApp, summarizeArgs, toolLogFields } from "./usage.js";
+import { callerHash, ClientMemory, clientFromInitialize, sanitizeClientApp, summarizeArgs, toolLogFields } from "./usage.js";
 
 const DEFAULT_PORT = 8080;
 const MAX_BODY_BYTES = 1024 * 1024;
@@ -39,6 +39,7 @@ const apiUrl = process.env.IRONFLOW_API_URL || "https://api.ironflow.sh";
 const forwardClientIP = process.env.FORWARD_CLIENT_IP === "true";
 const version = packageVersion();
 const logSalt = process.env.MCP_LOG_SALT || randomBytes(32).toString("hex");
+const clients = new ClientMemory();
 
 // setCors allows browser-based MCP clients (inspectors, web agents). No
 // cookies are involved, so a wildcard origin is safe.
@@ -96,10 +97,14 @@ async function handleMCP(req: IncomingMessage, res: ServerResponse, url: URL): P
   const body = await readBody(req);
   const ip = clientIP(req, forwardClientIP);
   const userAgent = sanitizeClientApp(req.headers["user-agent"]);
+  const caller = callerHash(ip, logSalt);
+  const initClient = clientFromInitialize(body);
+  if (initClient) clients.remember(caller, initClient);
+  const recalled = initClient ? "" : clients.recall(caller);
   const api = new IronflowAPI(apiUrl, key, undefined, `${version}-hosted`, ip);
   const outcomes: ToolOutcome[] = [];
   const server = createServer(api, version, {
-    fallbackClient: userAgent,
+    fallbackClient: recalled || userAgent,
     onToolResult: (outcome) => outcomes.push(outcome),
   });
   const transport = new StreamableHTTPServerTransport({
@@ -116,9 +121,10 @@ async function handleMCP(req: IncomingMessage, res: ServerResponse, url: URL): P
         keyed: Boolean(key),
         status: res.statusCode,
         ms: Date.now() - started,
-        client: clientFromInitialize(body) || undefined,
+        client: initClient || recalled || undefined,
+        client_recalled: recalled ? true : undefined,
         ua: userAgent || undefined,
-        caller: callerHash(ip, logSalt) || undefined,
+        caller: caller || undefined,
         args: summarizeArgs(body) || undefined,
         ...toolLogFields(outcomes, api.upstreamCalls()),
       })

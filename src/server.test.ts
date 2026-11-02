@@ -20,7 +20,7 @@ describe("createServer onToolResult", () => {
     const client = await connect({}, outcomes);
     const res = await client.callTool({ name: "get_vault_operations", arguments: {} });
     expect(res.isError).toBe(true);
-    expect(outcomes).toEqual([{ tool: "get_vault_operations", isError: true }]);
+    expect(outcomes).toEqual([{ tool: "get_vault_operations", isError: true, error: expect.stringMatching(/^Error: /) }]);
   });
 
   it("reports a successful call", async () => {
@@ -28,7 +28,7 @@ describe("createServer onToolResult", () => {
     const client = await connect({ getPrice: vi.fn().mockResolvedValue("1.5") }, outcomes);
     const res = await client.callTool({ name: "get_price", arguments: { market: "BTC-PERP" } });
     expect(res.isError).toBeFalsy();
-    expect(outcomes).toEqual([{ tool: "get_price", isError: false }]);
+    expect(outcomes).toEqual([{ tool: "get_price", isError: false, error: undefined }]);
   });
 });
 
