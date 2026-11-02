@@ -4,7 +4,7 @@
 
 MCP server for [Ironflow](https://ironflow.sh): read-only Hyperliquid market data and wallet analytics for Claude, Cursor and any MCP client. It covers native perps, HIP-3 builder markets, HIP-4 outcome markets and spot. 36 tools, all read-only, including `run_query` for read-only SQL over every Hyperliquid fill, wallet, funding and liquidation table.
 
-No API key needed to start: keyless calls get 10 requests per minute, 500 per day and 24 hours of history. A free key from [ironflow.sh/key](https://ironflow.sh/key) raises that to 60 requests per minute and 30 days.
+No API key needed to start: keyless calls get 30 requests per minute, 2,000 per day and 24 hours of history. A free key from [ironflow.sh/key](https://ironflow.sh/key) raises that to 60 requests per minute and 30 days.
 
 ## Install
 
