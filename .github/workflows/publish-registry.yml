@@ -2,10 +2,20 @@
 # release of the same version (the registry checks the npm package exists).
 # Uses GitHub's OIDC identity for this repo, so it does not depend on any
 # person's organization membership being public.
+#
+# retire: after a rename, the old server name to mark deleted first. The
+# registry lets one remote URL belong to one server name only, and only a
+# deleted server stops holding it (deprecated still does). Deleted versions
+# are hidden from listings and can be restored with status active.
 name: Publish to MCP Registry
 
 on:
   workflow_dispatch:
+    inputs:
+      retire:
+        description: "Old server name to mark deleted before publishing (after a rename), e.g. io.github.ironflowsh/mcp"
+        required: false
+        default: ""
 
 permissions:
   id-token: write
@@ -21,5 +31,16 @@ jobs:
           curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
       - name: Log in with GitHub OIDC
         run: ./mcp-publisher login github-oidc
+      - name: Retire the old name
+        if: ${{ inputs.retire != '' }}
+        env:
+          RETIRE: ${{ inputs.retire }}
+        run: |
+          NEW="$(jq -r .name server.json)"
+          if [ "$RETIRE" = "$NEW" ]; then
+            echo "retire is the name being published ($NEW); refusing" >&2
+            exit 1
+          fi
+          ./mcp-publisher status --status deleted --all-versions -y --message "Renamed to $NEW" "$RETIRE"
       - name: Publish
         run: ./mcp-publisher publish
