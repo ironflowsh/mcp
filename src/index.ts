@@ -21,7 +21,7 @@ const apiKey = process.env.IRONFLOW_API_KEY;
 if (!apiKey) {
   // stderr: stdout carries the MCP protocol.
   console.error(
-    "IRONFLOW_API_KEY is not set: running keyless (30 requests per minute, 2,000 per day, 24 hours of history). Free key for more: https://ironflow.sh/key",
+    "IRONFLOW_API_KEY is not set: running keyless (30 requests per minute, 2,000 per day, 24 hours of history). Free key for more: https://ironflow.sh/key?utm_source=mcp",
   );
 }
 

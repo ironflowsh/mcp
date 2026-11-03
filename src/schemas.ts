@@ -203,6 +203,8 @@ const toolSchemas: Record<string, Schema> = {
     })),
   }),
   get_liquidation_summary: obj("Liquidation totals over the window", {
+    window: d("Trailing window, e.g. 1h"),
+    wallets: d("Distinct wallets liquidated"),
     from: F.from,
     to: F.to,
     market: d("Market filter, or null for all markets"),
@@ -222,7 +224,7 @@ const toolSchemas: Record<string, Schema> = {
       address: F.address,
       timestamp: F.timestamp,
     }),
-    complete: d("False when the page cap was hit and totals are a lower bound"),
+    complete: d("Always true: totals cover every liquidation in the window"),
   }),
 
   get_fills: page("Fills for one wallet, newest first", {

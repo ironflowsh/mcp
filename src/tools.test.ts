@@ -228,36 +228,47 @@ describe("signal tools", () => {
 // ─── get_liquidation_summary ────────────────────────────────────────────────
 
 describe("get_liquidation_summary", () => {
-  const liq = (m: string, side: string, price: string, size: string) => ({ display_symbol: m, side, price, size, address: "0x1", timestamp: 1 });
+  const summary = {
+    as_of: 2000,
+    windows: [
+      {
+        window: "1h",
+        from: 1000,
+        total: { long_usd: 1200, short_usd: 10, liquidations: 3, wallets: 2 },
+        largest: { market: "BTC-PERP", side: "long", usd: 1000, price: 100, address: "0x1", timestamp: 1500 },
+        markets: [
+          { market: "BTC-PERP", long_usd: 1200, short_usd: 0, liquidations: 2, wallets: 1 },
+          { market: "ETH-PERP", long_usd: 0, short_usd: 10, liquidations: 1, wallets: 1 },
+        ],
+      },
+    ],
+  };
 
-  it("pages the feed and aggregates per market", async () => {
-    const get = vi
-      .fn()
-      .mockResolvedValueOnce({ data: [liq("BTC-PERP", "sell", "100", "2"), liq("ETH-PERP", "buy", "10", "1")], pagination: { has_more: true, next_cursor: "c1" } })
-      .mockResolvedValueOnce({ data: [liq("BTC-PERP", "sell", "100", "10")], pagination: { has_more: false } });
-    const out = JSON.parse(await findTool("get_liquidation_summary").handler({ minutes: 30 }, mockApi({ get })));
-
-    expect(get).toHaveBeenCalledTimes(2);
-    expect(get.mock.calls[1][1].cursor).toBe("c1");
+  it("reads the API summary and keeps the output shape", async () => {
+    const get = vi.fn().mockResolvedValue(summary);
+    const out = JSON.parse(await findTool("get_liquidation_summary").handler({ window: "1h", market: "BTC" }, mockApi({ get })));
+    expect(get).toHaveBeenCalledWith("/v1/liquidations/summary", { windows: "1h", market: "BTC" });
     expect(out.count).toBe(3);
+    expect(out.wallets).toBe(2);
     expect(out.notional_usd).toBe(1210);
     expect(out.longs_liquidated_usd).toBe(1200);
     expect(out.shorts_liquidated_usd).toBe(10);
     expect(out.by_market[0]).toEqual({ market: "BTC-PERP", count: 2, notional_usd: 1200 });
-    expect(out.largest.notional_usd).toBe(1000);
+    expect(out.largest).toEqual({ market: "BTC-PERP", side: "long", notional_usd: 1000, price: 100, address: "0x1", timestamp: 1500 });
     expect(out.complete).toBe(true);
   });
 
-  it("stops at the page cap and says the result is partial", async () => {
-    const page = { data: [liq("BTC-PERP", "sell", "1", "1")], pagination: { has_more: true, next_cursor: "x" } };
-    const get = vi.fn().mockResolvedValue(page);
-    const out = JSON.parse(await findTool("get_liquidation_summary").handler({}, mockApi({ get })));
-    expect(get).toHaveBeenCalledTimes(8);
-    expect(out.complete).toBe(false);
+  it("maps the older minutes argument to the next window", async () => {
+    const get = vi.fn().mockResolvedValue(summary);
+    await findTool("get_liquidation_summary").handler({ minutes: 90 }, mockApi({ get }));
+    expect(get.mock.calls[0][1]).toEqual({ windows: "4h" });
+    await findTool("get_liquidation_summary").handler({}, mockApi({ get }));
+    expect(get.mock.calls[1][1]).toEqual({ windows: "1h" });
   });
 
-  it("rejects windows over 240 minutes", async () => {
-    await expect(findTool("get_liquidation_summary").handler({ minutes: 600 }, mockApi())).rejects.toThrow(/240/);
+  it("rejects unknown windows and over-long minutes", async () => {
+    await expect(findTool("get_liquidation_summary").handler({ window: "2h" }, mockApi())).rejects.toThrow(/window/);
+    await expect(findTool("get_liquidation_summary").handler({ minutes: 20000 }, mockApi())).rejects.toThrow(/7 days/);
   });
 });
 
