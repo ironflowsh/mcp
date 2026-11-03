@@ -159,7 +159,8 @@ export const tools: ToolDef[] = [
   {
     name: "get_price",
     title: "Market price",
-    description: "Latest mark price of a Hyperliquid market: native perps, HIP-3 builder perps (e.g. xyz:NVDA-PERP) and spot.",
+    description:
+      "Latest mark price of one Hyperliquid market as a single number: native perps, HIP-3 builder perps (e.g. xyz:NVDA-PERP) and spot. The quickest answer to 'what is X trading at'. For the oracle price and funding use get_mark_prices; for price history use get_candles; to compare many markets at once use get_markets_snapshot.",
     inputSchema: {
       type: "object",
       properties: {
@@ -195,7 +196,8 @@ export const tools: ToolDef[] = [
   {
     name: "get_candles",
     title: "Candles (OHLCV)",
-    description: "OHLCV candles for a Hyperliquid market, computed from tick-level trades.",
+    description:
+      "OHLCV candles for one Hyperliquid market, built from every trade: open, high, low, close, volume and trade count per candle, oldest first. Returns the latest 24 candles by default (up to 500), at 1m to 1d intervals. Use it for price history, ranges and charts. For only the current price use get_price; for individual trades use get_recent_trades.",
     inputSchema: {
       type: "object",
       properties: {
@@ -235,7 +237,8 @@ export const tools: ToolDef[] = [
   {
     name: "get_open_interest",
     title: "Open interest",
-    description: "Latest open interest of a Hyperliquid perp, in base units, with its 24h volume in USD.",
+    description:
+      "Latest open interest of one Hyperliquid perp in units of the base asset (BTC for BTC-PERP), with its 24-hour traded volume in USD and the time of the reading. Multiply by get_price for open interest in USD. To compare open interest across markets use get_markets_snapshot; for its history use run_query (see describe_data).",
     inputSchema: {
       type: "object",
       properties: {
@@ -317,7 +320,8 @@ export const tools: ToolDef[] = [
   {
     name: "get_mark_prices",
     title: "Mark and oracle price",
-    description: "Latest mark price, oracle price and hourly funding rate of a Hyperliquid perp.",
+    description:
+      "Latest mark price, oracle price and current hourly funding rate of one Hyperliquid perp, with the time of the reading. The funding rate is a fraction per hour (0.0000125 = 0.00125%); positive means longs pay shorts. Use it when you need the oracle price or funding next to the mark, for example for basis or premium. For only the price use get_price, for funding history get_funding_rates, and for many markets at once get_markets_snapshot.",
     inputSchema: {
       type: "object",
       properties: {
@@ -643,7 +647,7 @@ export const tools: ToolDef[] = [
     name: "get_user_summary",
     title: "Wallet summary",
     description:
-      "One Hyperliquid wallet's stats over a window: volume, realized PnL, fill count, win rate, maker share and markets traded.",
+      "Totals for one Hyperliquid wallet over a time range (default the last 24 hours): fill count, volume in USD, realized PnL, fees, wins, losses, win rate and maker versus taker share, plus its current account state (open positions and margin). Use it for questions like 'how much did this wallet trade or make this week'. For a scored record with profit factor, drawdown and a per-market breakdown use get_trader_profile; for PnL over time use get_user_pnl_series.",
     inputSchema: {
       type: "object",
       properties: {
@@ -690,14 +694,14 @@ export const tools: ToolDef[] = [
     name: "get_user_pnl_series",
     title: "Wallet PnL curve",
     description:
-      "Realized PnL curve of a Hyperliquid wallet over time, bucketed (for example hourly or daily).",
+      "Realized PnL of one Hyperliquid wallet over time: buckets with realized PnL and fees paid in each, by default daily over the last 30 days. Add the buckets up for a running PnL curve. Realized only: unrealized PnL on open positions is in get_user_state. For totals over a range use get_user_summary.",
     inputSchema: {
       type: "object",
       properties: {
         address: { type: "string", description: "0x-prefixed 20-byte hex address" },
-        from: { type: "string", description: time("start") },
+        from: { type: "string", description: time("start", "Default 30 days ago") },
         to: { type: "string", description: time("end", "Default now") },
-        bucket_ms: { type: "number", description: "Bucket size in ms (e.g. 3600000 for 1h)" },
+        bucket_ms: { type: "number", description: "Bucket size in milliseconds: 3600000 for hourly, 86400000 for daily (default)" },
       },
       required: ["address"],
     },
@@ -766,7 +770,7 @@ export const tools: ToolDef[] = [
     name: "get_early_movers",
     title: "Early movers",
     description:
-      "Wallets whose large orders (at least $10k) on a Hyperliquid market were followed by a price move in their direction within 30 minutes. Returns a lead score in basis points and a hit rate per wallet. Past activity does not predict future results.",
+      "Wallets whose large orders (at least $10k) on one Hyperliquid market tended to come before price moved their way within 30 minutes, over the last 7 or 30 days. Per wallet: the number of scored orders, their total notional, a lead score (notional-weighted average 30-minute move in the order's direction, in basis points), a hit rate (share of orders followed by a move their way), the last order time and the share of its large orders cancelled without a fill. Needs at least 5 scored orders per wallet; the response states the formulas. Use it to find wallets worth watching on one market, then check them with get_trader_profile or get_user_state. Past activity does not predict future results.",
     inputSchema: {
       type: "object",
       properties: {
@@ -789,7 +793,7 @@ export const tools: ToolDef[] = [
     name: "get_trader_profile",
     title: "Trader profile",
     description:
-      "A Hyperliquid wallet's trading record over 7, 30 or 90 days: win rate, profit factor, realized PnL, max drawdown and its best markets.",
+      "How good and how risky one Hyperliquid trader is over 7, 30 or 90 days, rebuilt from its fills: overall win rate, profit factor, trade count, realized PnL and max drawdown; the same numbers per market; its liquidations; and its trades from open to close with direction, timing and peak size. Use it to vet a wallet before following it. For plain totals over any time range use get_user_summary; for positions open right now use get_user_state; for style labels such as market_maker use get_wallet_behavior. A 90d window on a very active wallet can take several seconds.",
     inputSchema: {
       type: "object",
       properties: {
@@ -821,11 +825,12 @@ export const tools: ToolDef[] = [
   {
     name: "get_cohort_addresses",
     title: "Cohort addresses",
-    description: "Wallet addresses in one named wallet cohort.",
+    description:
+      "Wallet addresses in one named cohort: up to 100, each with the value the cohort ranks by (realized PnL in USD for top_pnl_30d, volume in USD for high_volume_30d), and fetched_at, when the cohort was last computed. Call list_cohorts first for the names and what each one selects. Feed the addresses to get_user_summary, get_trader_profile or get_wallet_behavior to look at each wallet.",
     inputSchema: {
       type: "object",
       properties: {
-        name: { type: "string", description: "Cohort name (e.g. top_pnl_30d, high_volume_30d, whale_fills, or a custom cohort name)" },
+        name: { type: "string", description: "Cohort name from list_cohorts: top_pnl_30d, high_volume_30d, whale_fills, net_withdrawers_7d, liquidation_prone, vault_whales, or a custom cohort you created" },
       },
       required: ["name"],
     },
@@ -862,7 +867,7 @@ export const tools: ToolDef[] = [
     name: "get_status_history",
     title: "API uptime history",
     description:
-      "Ironflow uptime and data freshness per hour over the last 24 hours (default) or 7 days.",
+      "Ironflow's own uptime over the last 24 hours (default) or 7 days: points over the period, each with the service status and how fresh the data was in seconds, plus the overall uptime percent. Use it to check whether a gap or odd value in other results came from an Ironflow outage. For the status right now use get_status; for API latency and error rates use get_status_metrics.",
     inputSchema: {
       type: "object",
       properties: {
