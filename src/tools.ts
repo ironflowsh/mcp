@@ -1,7 +1,7 @@
 // MCP tool definitions for Ironflow market data.
 
 import { IronflowAPI } from "./api.js";
-import { MAX_SUMMARY_MINUTES, summarizeLiquidations } from "./liquidations.js";
+import { SUMMARY_WINDOWS, WINDOW_MINUTES, summaryOutput, type LiquidationSummaryResponse } from "./liquidations.js";
 import { MAX_LIMIT, rankSnapshot, SORT_KEYS, type SortKey } from "./snapshot.js";
 import {
   BEHAVIOR_LABELS,
@@ -278,22 +278,34 @@ export const tools: ToolDef[] = [
     name: "get_liquidation_summary",
     title: "Liquidation summary",
     description:
-      "Liquidations across every Hyperliquid market (or one market) over the last N minutes, totalled: count, notional, longs vs shorts liquidated, the top markets and the largest single liquidation. Use it for 'who got liquidated in the last hour?'. Keyless calls can look back 60 minutes, keyed calls up to 240.",
+      "Liquidations on Hyperliquid over a trailing window, totalled across every market or the ones named: count, wallets, notional, longs vs shorts liquidated, the top markets and the largest single liquidation with its price. Use it for 'who got liquidated in the last hour?' or 'how much was liquidated today?'. For the individual liquidations use get_liquidations; for liquidation prices still ahead use get_liquidation_levels. Windows from 15m to 24h without a key, 7d with one. Totals are computed by the API over every liquidation, not sampled.",
     inputSchema: {
       type: "object",
       properties: {
-        minutes: { type: "number", description: "Lookback in minutes (default 60, max 240)" },
-        market: { type: "string", description: MARKET_FILTER },
+        window: { type: "string", enum: [...SUMMARY_WINDOWS], description: "Trailing window. Default 1h" },
+        market: { type: "string", description: "Optional: one market or a comma list (BTC-PERP,ETH-PERP); Hyperliquid names work (BTC, xyz:NVDA)" },
+        minutes: { type: "number", description: "Older form of window, rounded up to the next one (90 becomes 4h)" },
       },
       required: [],
     },
     handler: async (args, api) => {
-      const minutes = optionalNumber(args, "minutes", 60);
-      if (minutes > MAX_SUMMARY_MINUTES) {
-        throw new Error(`"minutes" must be at most ${MAX_SUMMARY_MINUTES}`);
+      let window = optionalString(args, "window", "");
+      if (!window) {
+        const minutes = optionalNumber(args, "minutes", 60);
+        const fit = SUMMARY_WINDOWS.find((w) => WINDOW_MINUTES[w] >= minutes);
+        if (!fit) {
+          throw new Error(`"minutes" must be at most ${WINDOW_MINUTES["7d"]} (7 days)`);
+        }
+        window = fit;
+      }
+      if (!(SUMMARY_WINDOWS as readonly string[]).includes(window)) {
+        throw new Error(`"window" must be one of ${SUMMARY_WINDOWS.join(", ")}`);
       }
       const market = optionalString(args, "market", "");
-      return JSON.stringify(await summarizeLiquidations(api, minutes, market), null, 2);
+      const params: Record<string, string> = { windows: window };
+      if (market) params.market = market;
+      const res = (await api.get("/v1/liquidations/summary", params)) as LiquidationSummaryResponse;
+      return JSON.stringify(summaryOutput(res, market), null, 2);
     },
   },
   {
