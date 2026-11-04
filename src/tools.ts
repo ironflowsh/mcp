@@ -489,7 +489,7 @@ export const tools: ToolDef[] = [
   {
     name: "get_liquidation_levels",
     title: "Liquidation levels",
-    description: "Liquidated notional on a Hyperliquid perp bucketed by price: where longs and shorts were wiped out. Needs a Builder or Enterprise key; keyless and free-key calls return 403.",
+    description: "Liquidated notional on a Hyperliquid perp bucketed by price: where longs and shorts were wiped out. Needs an API key (a free key works, https://ironflow.sh/key); keyless calls return 403.",
     inputSchema: {
       type: "object",
       properties: {
@@ -518,9 +518,9 @@ export const tools: ToolDef[] = [
     },
     handler: async (args, api) => {
       const limit = optionalNumber(args, "limit", 10);
-      // GET /v1/analytics/vault-leaderboard is Builder and Enterprise only
-      // (403 TIER_FORBIDDEN otherwise). Keyed callers try it first; everyone
-      // else, and keys below Builder, get the same ranking from SQL.
+      // GET /v1/analytics/vault-leaderboard needs an API key (any tier;
+      // 403 TIER_FORBIDDEN without one). Keyed callers try it first; keyless
+      // callers, and any key it refuses, get the same ranking from SQL.
       if (api.hasKey()) {
         try {
           return JSON.stringify(await api.getVaultLeaderboard(String(limit)), null, 2);
