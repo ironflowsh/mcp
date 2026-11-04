@@ -279,6 +279,42 @@ export const tools: ToolDef[] = [
     },
   },
   {
+    name: "get_outcome_markets",
+    title: "HIP-4 outcome markets overview",
+    description:
+      "Hyperliquid HIP-4 outcome markets (prediction markets on sports, central bank decisions, IPOs and daily BTC price contracts) over the last 4 hours, 1 day or 1 week: total volume, fills, wallets and active markets, plus the most traded outcomes with their last price (the implied probability, 0 to 1) and last-24-hour volume. Each outcome has a Yes and a No side whose prices sum to 1. For one outcome's trades or candles pass its symbol to get_recent_trades or get_candles; settled outcomes stay queryable. For per-wallet outcome activity use run_query on hl.wallet_daily with market_class = 'prediction'.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        window: { type: "string", enum: ["4h", "1d", "1w"], description: "Lookback window for the totals (default 1d)" },
+        limit: { type: "number", description: "Number of outcomes to return, most traded first (1-200, default 20)" },
+      },
+      required: [],
+    },
+    handler: async (args, api) => {
+      const window = optionalString(args, "window", "1d");
+      const limit = Math.min(Math.max(optionalNumber(args, "limit", 20), 1), 200);
+      const data = (await api.getOutcomeMarkets(window)) as Record<string, unknown>;
+      const markets = Array.isArray(data.active_markets) ? (data.active_markets as Record<string, unknown>[]) : [];
+      const top = [...markets]
+        .sort((a, b) => Number(b.notional_24h ?? 0) - Number(a.notional_24h ?? 0))
+        .slice(0, limit);
+      return JSON.stringify(
+        {
+          window_hours: data.window_hours,
+          notional_total: data.notional_total,
+          fills_total: data.fills_total,
+          wallets_total: data.wallets_total,
+          markets_active: data.markets_active,
+          computed_at: data.computed_at,
+          top_markets: top,
+        },
+        null,
+        2,
+      );
+    },
+  },
+  {
     name: "get_premium",
     title: "Mark against oracle premium",
     description:

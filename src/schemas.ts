@@ -182,6 +182,24 @@ const toolSchemas: Record<string, Schema> = {
     })),
   }),
 
+  get_outcome_markets: obj("HIP-4 outcome markets overview", {
+    window_hours: d("Window of the totals, in hours"),
+    notional_total: d("Volume in USD over the window"),
+    fills_total: d("Fills over the window"),
+    wallets_total: d("Wallets that traded over the window"),
+    markets_active: d("Outcome markets listed now"),
+    computed_at: d("When the summary was computed, Unix seconds"),
+    top_markets: arr("Most traded outcomes, highest 24h volume first", obj("One outcome side", {
+      market_id: d("Ironflow market id"),
+      display_symbol: d('Outcome symbol, e.g. "BTC-77719-20261105-Yes"'),
+      hl_coin: d('Hyperliquid coin, e.g. "#14730"'),
+      last_price: d("Last traded price, the implied probability (0 to 1)"),
+      last_fill_ms: d("Last fill, Unix milliseconds"),
+      fills_24h: d("Fills in the last 24 hours"),
+      notional_24h: d("Volume in USD in the last 24 hours"),
+    })),
+  }),
+
   get_premium: obj("Mark against oracle premium", {
     market: F.market,
     interval: d("Bucket size"),

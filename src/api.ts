@@ -292,6 +292,10 @@ export class IronflowAPI {
     return this.get("/v1/premium", params);
   }
 
+  async getOutcomeMarkets(window: string): Promise<unknown> {
+    return this.get("/v1/predictions/summary", { window });
+  }
+
   async getOpenInterestChanges(window: string, sort: string, limit: string, dex?: string, minOiUsd?: string): Promise<unknown> {
     const params: Record<string, string> = { window, sort, limit };
     if (dex) params.dex = dex;
