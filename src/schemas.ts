@@ -166,6 +166,58 @@ const toolSchemas: Record<string, Schema> = {
     realized_pnl: F.realized_pnl,
   }),
 
+  get_open_interest_changes: obj("Perps ranked by open interest change", {
+    window: d("Lookback window: 1h, 4h, 24h or 7d"),
+    sort: d("usd or pct"),
+    count: d("Markets returned"),
+    data: arr("Markets", obj("One market", {
+      market: F.market,
+      dex: d('HIP-3 dex, e.g. "xyz" (absent for native perps)'),
+      oi_start: d("Open interest at the window start, in coins"),
+      oi_end: d("Open interest now, in coins"),
+      change_pct: d("Change in percent"),
+      change_usd: d("Change in USD at the latest mark"),
+      oi_end_usd: d("Open interest now in USD"),
+      mark: d("Latest mark price"),
+    })),
+  }),
+
+  get_premium: obj("Mark against oracle premium", {
+    market: F.market,
+    interval: d("Bucket size"),
+    summary: obj("Premium over the window, in basis points", {
+      latest_bps: d("Latest bucket"),
+      mean_bps: d("Mean over the buckets"),
+      min_bps: d("Lowest bucket"),
+      max_bps: d("Highest bucket"),
+      buckets: d("Number of buckets"),
+    }),
+    data: arr("Buckets, oldest first", obj("One bucket", {
+      t: d("Bucket start, Unix milliseconds"),
+      mark: d("Average mark price"),
+      oracle: d("Average oracle price"),
+      premium_bps: d("(mark / oracle - 1) x 10,000"),
+    })),
+  }),
+
+  get_auto_deleveraging: obj("Auto-deleveraging fills, newest first", {
+    count: d("Fills returned"),
+    recorded_from: d("First moment recorded, Unix milliseconds"),
+    data: arr("ADL fills", obj("One fill", {
+      timestamp: F.timestamp,
+      market: F.market,
+      address: d("Wallet whose position was closed"),
+      side: F.side,
+      price: F.price,
+      size: F.size,
+      notional: d("Notional in USD"),
+      realized_pnl: F.realized_pnl,
+      tid: d("Trade id, shared with the liquidated side"),
+      block: F.block_number,
+      hash: d("Transaction hash (0x…)"),
+    })),
+  }),
+
   describe_data: obj("Catalog of the SQL tables run_query can read", {
     dialect: d("SQL dialect and database name"),
     tables: arr("Queryable tables", obj("One table", {
@@ -296,6 +348,22 @@ const toolSchemas: Record<string, Schema> = {
   }),
 
   get_user_state: USER_STATE,
+
+  get_positions_at: obj("Perp positions at a past moment", {
+    address: F.address,
+    at: d("The moment, Unix milliseconds"),
+    count: d("Positions returned"),
+    method: d("How the sizes were rebuilt"),
+    positions: arr("Positions, largest notional first", obj("One position", {
+      market: F.market,
+      side: d("long or short"),
+      size: d("Signed size in coins: positive long, negative short"),
+      mark_price: d("Last mark price at or before the moment"),
+      notional: d("Size times mark price, in USD"),
+      size_now: d("Signed size today"),
+      fills_since: d("Fills in this market after the moment"),
+    })),
+  }),
 
   get_user_funding: obj("Funding paid or received per market per bucket", {
     total_rows: d("Rows in the window before the limit"),

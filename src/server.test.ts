@@ -36,7 +36,7 @@ describe("tool listing", () => {
   it("gives every tool a title and the read-only annotations the Claude directory requires", async () => {
     const client = await connect({}, []);
     const { tools } = await client.listTools();
-    expect(tools.length).toBe(36);
+    expect(tools.length).toBe(40);
     for (const t of tools) {
       expect(t.title?.trim(), t.name).toBeTruthy();
       expect(t.annotations?.title, t.name).toBe(t.title);

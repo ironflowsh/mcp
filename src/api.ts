@@ -282,6 +282,30 @@ export class IronflowAPI {
     return this.get("/v1/analytics/user-state", { address });
   }
 
+  async getPositionsAt(address: string, at: string): Promise<unknown> {
+    return this.get("/v1/positions", { address, at });
+  }
+
+  async getPremium(market: string, interval: string, from?: string): Promise<unknown> {
+    const params: Record<string, string> = { market, interval };
+    if (from) params.from = from;
+    return this.get("/v1/premium", params);
+  }
+
+  async getOpenInterestChanges(window: string, sort: string, limit: string, dex?: string, minOiUsd?: string): Promise<unknown> {
+    const params: Record<string, string> = { window, sort, limit };
+    if (dex) params.dex = dex;
+    if (minOiUsd) params.min_oi_usd = minOiUsd;
+    return this.get("/v1/open-interest/changes", params);
+  }
+
+  async getAutoDeleveraging(limit: string, market?: string, from?: string): Promise<unknown> {
+    const params: Record<string, string> = { limit };
+    if (market) params.market = market;
+    if (from) params.from = from;
+    return this.get("/v1/adl", params);
+  }
+
   async getUserFunding(
     address: string,
     market: string = "",
