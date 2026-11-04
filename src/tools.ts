@@ -253,6 +253,54 @@ export const tools: ToolDef[] = [
     },
   },
   {
+    name: "get_open_interest_changes",
+    title: "Open interest movers",
+    description:
+      "Hyperliquid perps ranked by how their open interest moved over the last 1h, 4h, 24h or 7d: open interest at the start and now (in coins), the change in USD at the latest mark and in percent. Sorted by the size of the USD change by default, or by percent. Filter to one HIP-3 dex (xyz) or to native perps only. Markets with less than $100k of open interest at both ends are left out unless you lower min_oi_usd. Use it for 'where is money flowing in or out'. For one market's latest open interest use get_open_interest.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        window: { type: "string", enum: ["1h", "4h", "24h", "7d"], description: "Lookback window (default 24h)" },
+        sort: { type: "string", enum: ["usd", "pct"], description: "Rank by USD change (default) or percent change" },
+        dex: { type: "string", description: "Optional: a HIP-3 dex such as xyz, or native for validator-run perps" },
+        min_oi_usd: { type: "number", description: "Leave out markets below this open interest in USD (default 100000)" },
+        limit: { type: "number", description: "Number of markets (1-200, default 25)" },
+      },
+      required: [],
+    },
+    handler: async (args, api) => {
+      const window = optionalString(args, "window", "24h");
+      const sort = optionalString(args, "sort", "usd");
+      const limit = optionalNumber(args, "limit", 25);
+      const dex = optionalString(args, "dex", "");
+      const minOi = args.min_oi_usd === undefined ? undefined : String(optionalNumber(args, "min_oi_usd", 100000));
+      const data = await api.getOpenInterestChanges(window, sort, String(limit), dex || undefined, minOi);
+      return JSON.stringify(data, null, 2);
+    },
+  },
+  {
+    name: "get_premium",
+    title: "Mark against oracle premium",
+    description:
+      "A Hyperliquid perp's mark price against its oracle price over time, with the premium in basis points ((mark / oracle - 1) x 10,000) per bucket and a summary (latest, mean, min, max). On HIP-3 stock, index and commodity perps such as xyz:NVDA-PERP, xyz:GOLD-PERP or xyz:SP500-PERP the oracle follows the underlying, so this shows how far the perp trades from what it tracks, weekends included. Default 1h buckets over the last 7 days. For funding payments use get_funding_rates.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        market: { type: "string", description: MARKET },
+        interval: { type: "string", enum: ["1m", "5m", "15m", "1h", "4h", "1d"], description: "Bucket size (default 1h)" },
+        days: { type: "number", description: "How many days back (default 7; limited by your key's history window)" },
+      },
+      required: ["market"],
+    },
+    handler: async (args, api) => {
+      const market = requireString(args, "market");
+      const interval = optionalString(args, "interval", "1h");
+      const from = args.days === undefined ? undefined : String(Date.now() - Math.max(optionalNumber(args, "days", 7), 0) * 86_400_000);
+      const data = await api.getPremium(market, interval, from);
+      return JSON.stringify(data, null, 2);
+    },
+  },
+  {
     name: "get_liquidations",
     title: "Liquidations",
     description: "Liquidations on a Hyperliquid perp, read from our own nodes: price, size, side and the liquidated wallet. Hyperliquid's public API has no liquidation feed.",
@@ -268,6 +316,29 @@ export const tools: ToolDef[] = [
       const market = requireString(args, "market");
       const limit = optionalNumber(args, "limit", 20);
       const data = await api.getLiquidations(market, String(limit));
+      return JSON.stringify(data, null, 2);
+    },
+  },
+
+  {
+    name: "get_auto_deleveraging",
+    title: "Auto-deleveraging fills",
+    description:
+      "Hyperliquid auto-deleveraging (ADL) fills, newest first, across all markets or one: profitable positions Hyperliquid closed to cover a liquidation its backstop could not absorb. Per fill: wallet, market, side, price, size, notional, realized PnL, trade id (shared with the liquidated side) and transaction hash. Recorded from 2026-11-04; the default window is the last 7 days. For the liquidated side use get_liquidations.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        market: { type: "string", description: MARKET_FILTER },
+        days: { type: "number", description: "How many days back (default 7)" },
+        limit: { type: "number", description: "Number of fills (1-1000, default 100)" },
+      },
+      required: [],
+    },
+    handler: async (args, api) => {
+      const market = optionalString(args, "market", "");
+      const limit = optionalNumber(args, "limit", 100);
+      const from = args.days === undefined ? undefined : String(Date.now() - Math.max(optionalNumber(args, "days", 7), 0) * 86_400_000);
+      const data = await api.getAutoDeleveraging(String(limit), market || undefined, from);
       return JSON.stringify(data, null, 2);
     },
   },
@@ -476,6 +547,26 @@ export const tools: ToolDef[] = [
     handler: async (args, api) => {
       const address = requireString(args, "address");
       const data = await api.getUserState(address);
+      return JSON.stringify(data, null, 2);
+    },
+  },
+  {
+    name: "get_positions_at",
+    title: "Wallet positions at a past time",
+    description:
+      "Exact perp positions one Hyperliquid wallet held at a past moment, up to 90 days back: market, side, signed size, mark price and notional at that moment, plus today's size and how many fills it made since. Built from Hyperliquid's live positions minus the wallet's fills after that moment, so sizes are exact across native and HIP-3 perps. Needs a free API key; how far back you can go follows the key's history window. Use it for questions like 'what was this wallet holding before the crash'. For positions right now use get_user_state; for trades in between use get_fills.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        address: { type: "string", description: "0x-prefixed 20-byte hex address" },
+        at: { type: "string", description: "The past moment: ISO 8601 (2026-11-01T12:00:00Z), unix seconds or unix milliseconds" },
+      },
+      required: ["address", "at"],
+    },
+    handler: async (args, api) => {
+      const address = requireString(args, "address");
+      const at = requireString(args, "at");
+      const data = await api.getPositionsAt(address, at);
       return JSON.stringify(data, null, 2);
     },
   },
