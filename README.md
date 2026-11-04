@@ -1,6 +1,6 @@
 # @ironflowsh/mcp
 
-MCP server for [Ironflow](https://ironflow.sh): read-only Hyperliquid market data and wallet analytics for Claude, Cursor and any MCP client. It covers native perps, HIP-3 builder markets, HIP-4 outcome markets and spot. 40 tools, all read-only, including `run_query` for read-only SQL over every Hyperliquid fill, wallet, funding and liquidation table.
+MCP server for [Ironflow](https://ironflow.sh): read-only Hyperliquid market data and wallet analytics for Claude, Cursor and any MCP client. It covers native perps, HIP-3 builder markets, HIP-4 outcome markets and spot. 41 tools, all read-only, including `run_query` for read-only SQL over every Hyperliquid fill, wallet, funding and liquidation table.
 
 No API key needed to start: keyless calls get 30 requests per minute, 2,000 per day and 24 hours of history. A free key from [ironflow.sh/key](https://ironflow.sh/key) raises that to 60 requests per minute and 30 days.
 
@@ -76,7 +76,7 @@ To host the HTTP server yourself: `npx -y -p @ironflowsh/mcp ironflow-mcp-http` 
 
 **Ask anything (SQL):** `describe_data` lists the queryable tables, columns and example queries; `run_query` runs one read-only ClickHouse SELECT over them (every fill, per-wallet daily totals, behaviour labels, funding, mark and oracle prices, open interest, liquidations, builder-code fills, transfers, vault flows); `get_wallet_behavior` returns 30-day trading-style labels per wallet. Keyless queries see the last 24 hours; a free key sees 30 days.
 
-**Market data:** `get_price`, `get_recent_trades`, `get_candles`, `get_funding_rates`, `get_open_interest`, `get_open_interest_changes`, `get_premium`, `get_liquidations`, `get_liquidation_summary`, `get_auto_deleveraging`, `get_fills`, `get_mark_prices`, `get_vault_operations`, `list_markets`, `get_markets_snapshot`
+**Market data:** `get_price`, `get_recent_trades`, `get_candles`, `get_funding_rates`, `get_open_interest`, `get_open_interest_changes`, `get_premium`, `get_outcome_markets`, `get_liquidations`, `get_liquidation_summary`, `get_auto_deleveraging`, `get_fills`, `get_mark_prices`, `get_vault_operations`, `list_markets`, `get_markets_snapshot`
 
 **Market analytics:** `get_funding_stats`, `get_pnl_leaderboard`, `get_market_top_wallets`, `get_wallet_labels`, `get_vault_leaderboard` and `get_liquidation_levels` (needs a Builder or Enterprise key)
 
