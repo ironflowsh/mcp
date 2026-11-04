@@ -360,7 +360,7 @@ export const tools: ToolDef[] = [
     name: "get_auto_deleveraging",
     title: "Auto-deleveraging fills",
     description:
-      "Hyperliquid auto-deleveraging (ADL) fills, newest first, across all markets or one: profitable positions Hyperliquid closed to cover a liquidation its backstop could not absorb. Per fill: wallet, market, side, price, size, notional, realized PnL, trade id (shared with the liquidated side) and transaction hash. Recorded from 2026-11-04; the default window is the last 7 days. For the liquidated side use get_liquidations.",
+      "Hyperliquid auto-deleveraging (ADL) fills, newest first, across all markets or one: profitable positions Hyperliquid closed to cover a liquidation its backstop could not absorb. Per fill: wallet, market, side, price, size, notional, realized PnL, trade id (shared with the liquidated side) and transaction hash. Recorded from 2026-08-01; the default window is the last 7 days. For the liquidated side use get_liquidations.",
     inputSchema: {
       type: "object",
       properties: {
