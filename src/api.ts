@@ -477,7 +477,8 @@ export class IronflowAPI {
 }
 
 // setWindow adds from and to when set. Both pass through as the caller gave
-// them: the API reads Unix ms, Unix seconds and ISO 8601.
+// them: the API reads Unix ms, Unix seconds, ISO 8601 and relative times
+// (-7d, now).
 function setWindow(params: Record<string, string>, from: string, to: string): void {
   if (from) params.from = from;
   if (to) params.to = to;

@@ -2,7 +2,7 @@
 
 MCP server for [Ironflow](https://ironflow.sh): Hyperliquid market data, wallet analytics and liquidation alerts for Claude, Cursor and any MCP client. It covers native perps, HIP-3 builder markets, HIP-4 outcome markets and spot. 45 tools: 41 read data, including `run_query` for read-only SQL over every Hyperliquid fill, wallet, funding and liquidation table, and 4 set up liquidation alerts that Ironflow posts to your Discord, Slack, Telegram or webhook.
 
-No API key needed to start: keyless calls get 30 requests per minute, 2,000 per day and 24 hours of history. A free key from [ironflow.sh/key](https://ironflow.sh/key) raises that to 60 requests per minute and 30 days.
+No API key needed to start: keyless calls get 30 requests per minute, 2,000 per day and 24 hours of history. A free key from [ironflow.sh/key](https://ironflow.sh/key) raises that to 60 requests per minute and 30 days. Agents with a USDC wallet on Base can also pay per call with x402, from $0.001 and with no key ([pay per call](https://docs.ironflow.sh/guides/pay-per-call)).
 
 ## Install
 
@@ -90,7 +90,7 @@ To host the HTTP server yourself: `npx -y -p @ironflowsh/mcp ironflow-mcp-http` 
 
 **Liquidation alerts** (need an API key; a free key allows one): `create_liquidation_alert` has Ironflow post matching liquidations to a Discord channel, Slack channel, Telegram chat or HTTPS webhook within seconds, filtered by market, side, size and wallet, and keeps posting after the conversation ends; `list_liquidation_alerts`, `test_liquidation_alert` and `delete_liquidation_alert` manage them. Guide: [docs.ironflow.sh/guides/liquidation-alerts](https://docs.ironflow.sh/guides/liquidation-alerts).
 
-Markets can be given as display symbols (`BTC-PERP`, `xyz:NVDA-PERP`, `HYPE/USDC`) or Hyperliquid names (`BTC`, `@107`, `xyz:NVDA`), and times as Unix ms, Unix seconds or ISO 8601. When the API reads a name, or serves a window that starts later than asked because of the key's history limit, the result starts with a `notice` saying so. Fill history covers a rolling 12 months. There is no order book, order status or streaming tool; for live feeds the REST API has `/v1/liquidations/stream` and `/v1/trades/stream` (Server-Sent Events).
+Markets can be given as display symbols (`BTC-PERP`, `xyz:NVDA-PERP`, `HYPE/USDC`) or Hyperliquid names (`BTC`, `@107`, `xyz:NVDA`), and times as Unix ms, Unix seconds, ISO 8601 or relative to now (`-7d`, `-24h`, `now`). When the API reads a name, or serves a window that starts later than asked because of the key's history limit, the result starts with a `notice` saying so. Fill history covers a rolling 12 months. There is no order book, order status or streaming tool; for live feeds the REST API has `/v1/liquidations/stream` and `/v1/trades/stream` (Server-Sent Events).
 
 ## Configuration
 
