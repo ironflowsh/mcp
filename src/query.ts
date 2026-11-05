@@ -117,8 +117,8 @@ export function rowsToObjects(result: { columns: string[]; rows: unknown[][] }):
   return result.rows.map((r) => Object.fromEntries(result.columns.map((c, i) => [c, r[i]])));
 }
 
-// Vault leaderboard over SQL. GET /v1/analytics/vault-leaderboard needs a
-// Builder or Enterprise key, but the same aggregation over hl.vault_operations
+// Vault leaderboard over SQL. GET /v1/analytics/vault-leaderboard needs an
+// API key (a free key works), but the same aggregation over hl.vault_operations
 // is open to every caller through /v1/query (rows limited to the caller's
 // history window), so get_vault_leaderboard uses it for everyone else.
 
