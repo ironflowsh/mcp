@@ -71,12 +71,13 @@ function optionalBoolean(args: Record<string, unknown>, key: string): boolean {
 }
 
 // optionalTime reads a window bound and passes it on as the caller wrote it:
-// the API takes Unix ms, Unix seconds and ISO 8601 (UTC when no zone is
-// given), so nothing is converted here. "" means not set.
+// the API takes Unix ms, Unix seconds, ISO 8601 (UTC when no zone is given)
+// and relative times counted back from now (now, -30m, -24h, -7d, -2w,
+// now-7d), so nothing is converted here. "" means not set.
 function optionalTime(args: Record<string, unknown>, key: string): string {
   const val = args[key];
   if (val === undefined || val === null || val === 0) return "";
-  const invalid = new Error(`"${key}" must be Unix ms, Unix seconds or an ISO 8601 date such as 2026-10-01T00:00:00Z`);
+  const invalid = new Error(`"${key}" must be Unix ms, Unix seconds, an ISO 8601 date such as 2026-10-01T00:00:00Z, or a relative time such as -7d, -24h or now`);
   if (typeof val === "number") {
     if (!Number.isFinite(val) || val < 0) throw invalid;
     return String(Math.floor(val));
@@ -84,6 +85,8 @@ function optionalTime(args: Record<string, unknown>, key: string): string {
   if (typeof val !== "string") throw invalid;
   const text = val.trim();
   if (/^\d*$/.test(text)) return Number(text) > 0 ? text : "";
+  // Relative to now: now, -30m, -24h, -7d, -2w, now-7d (the API reads them).
+  if (/^(now)?(-\d{1,5}[mhdw])?$/i.test(text)) return text.toLowerCase();
   // The API reads 2026-10-01, 2026-10-01T12:00 and RFC 3339 date-times.
   if (!/^\d{4}-\d{2}-\d{2}(T|$)/.test(text) || Number.isNaN(Date.parse(text))) throw invalid;
   return text;
@@ -102,7 +105,7 @@ function alertId(args: Record<string, unknown>): string {
 const MARKET = "Market: BTC-PERP, xyz:NVDA-PERP, HYPE/USDC, or a Hyperliquid name (BTC, @107, xyz:NVDA)";
 const MARKET_FILTER = "Optional market filter: BTC-PERP or a Hyperliquid name (BTC, xyz:NVDA)";
 const time = (bound: "start" | "end", extra = "") =>
-  `Window ${bound}: Unix ms or seconds, or ISO 8601 (2026-10-01T00:00:00Z)${extra ? `. ${extra}` : ""}`;
+  `Window ${bound}: Unix ms or seconds, ISO 8601 (2026-10-01T00:00:00Z), or relative (-7d, -24h, now)${extra ? `. ${extra}` : ""}`;
 
 // ─── Tools ──────────────────────────────────────────────────────────────────
 

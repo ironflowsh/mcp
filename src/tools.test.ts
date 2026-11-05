@@ -444,6 +444,16 @@ describe("time window parameters", () => {
     expect(getPnLLeaderboard).toHaveBeenCalledWith("", "", 50, "realized_pnl");
   });
 
+  it("pass relative times (now, -24h, now-7d) through", async () => {
+    const getUserSummary = vi.fn().mockResolvedValue({});
+    const tool = findTool("get_user_summary");
+    await tool.handler({ address: W, from: "-7d", to: "now" }, mockApi({ getUserSummary }));
+    await tool.handler({ address: W, from: "NOW-24h", to: "-30m" }, mockApi({ getUserSummary }));
+    expect(getUserSummary.mock.calls[0]).toEqual([W, "-7d", "now"]);
+    expect(getUserSummary.mock.calls[1]).toEqual([W, "now-24h", "-30m"]);
+    await expect(tool.handler({ address: W, from: "-7y" }, mockApi())).rejects.toThrow(/relative/);
+  });
+
   it("reject text that is no time", async () => {
     await expect(findTool("get_user_summary").handler({ address: W, from: "last tuesday" }, mockApi())).rejects.toThrow(/ISO 8601/);
     await expect(findTool("get_user_summary").handler({ address: W, from: -5 }, mockApi())).rejects.toThrow(/ISO 8601/);
