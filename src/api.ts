@@ -199,6 +199,17 @@ export class IronflowAPI {
     return res.json();
   }
 
+  // del sends a DELETE; the API answers 204 with no body.
+  async del(path: string): Promise<void> {
+    const url = new URL(path, this.baseUrl);
+    const res = await fetch(url.toString(), { method: "DELETE", headers: this.headers() });
+    this.noteHeaders(res);
+    if (!res.ok) {
+      throw await this.apiError(res);
+    }
+    this.record(res.status);
+  }
+
   // ─── Convenience methods ──────────────────────────────────────────────
 
   async getPrice(market: string): Promise<string> {

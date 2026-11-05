@@ -33,16 +33,28 @@ describe("createServer onToolResult", () => {
 });
 
 describe("tool listing", () => {
-  it("gives every tool a title and the read-only annotations the Claude directory requires", async () => {
+  it("gives every tool a title and annotations that say what it changes", async () => {
     const client = await connect({}, []);
     const { tools } = await client.listTools();
-    expect(tools.length).toBe(41);
+    expect(tools.length).toBe(45);
+    const writes: Record<string, { destructive: boolean; idempotent: boolean }> = {
+      create_liquidation_alert: { destructive: false, idempotent: false },
+      test_liquidation_alert: { destructive: false, idempotent: false },
+      delete_liquidation_alert: { destructive: true, idempotent: true },
+    };
     for (const t of tools) {
       expect(t.title?.trim(), t.name).toBeTruthy();
       expect(t.annotations?.title, t.name).toBe(t.title);
-      expect(t.annotations?.readOnlyHint, t.name).toBe(true);
-      expect(t.annotations?.destructiveHint, t.name).not.toBe(true);
       expect(t.annotations?.openWorldHint, t.name).toBe(true);
+      const w = writes[t.name];
+      if (w) {
+        expect(t.annotations?.readOnlyHint, t.name).toBe(false);
+        expect(t.annotations?.destructiveHint, t.name).toBe(w.destructive);
+        expect(t.annotations?.idempotentHint, t.name).toBe(w.idempotent);
+      } else {
+        expect(t.annotations?.readOnlyHint, t.name).toBe(true);
+        expect(t.annotations?.destructiveHint, t.name).not.toBe(true);
+      }
     }
   });
 });

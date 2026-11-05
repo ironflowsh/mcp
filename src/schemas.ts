@@ -48,6 +48,23 @@ const F = {
   last_trade_ms: d("Last trade, Unix milliseconds"),
 } satisfies Record<string, Schema>;
 
+const ALERT = {
+  id: d("Alert id (UUID)"),
+  name: d("Label shown in each message"),
+  type: d("webhook, discord, slack or telegram"),
+  destination: d("Host it posts to, without the secret part of the URL"),
+  markets: d("Markets watched; empty means every market"),
+  side: d("any, long (longs liquidated) or short"),
+  min_usd: d("Smallest liquidation reported, USD"),
+  address: d("Only this wallet, when set"),
+  status: d("active or disabled (after 20 failed deliveries in a row)"),
+  failures: d("Failed deliveries in a row"),
+  last_error: d("The destination's last error"),
+  last_sent_at: d("Last delivery, RFC 3339; null before the first"),
+  sent_count: d("Liquidations delivered so far"),
+  created_at: d("Creation time, RFC 3339"),
+};
+
 const PAGINATION = obj("Cursor pagination", {
   next_cursor: d("Pass as cursor to fetch the next page; null on the last page"),
   has_more: d("Whether more rows exist"),
@@ -250,6 +267,21 @@ const toolSchemas: Record<string, Schema> = {
     limits: d("Your tier's limits: history_days, max_execution_seconds, max_rows, budget_seconds_per_hour"),
     tiers: arr("Every tier's limits", d("One tier")),
   }),
+  create_liquidation_alert: obj("The new alert", {
+    ...ALERT,
+    signing_secret: d("Webhooks only: HMAC key for the X-Ironflow-Signature header, shown only here"),
+    setup: d("What to do before the first message arrives (Telegram: the bot to add to the chat)"),
+  }),
+  list_liquidation_alerts: obj("The account's liquidation alerts", {
+    alerts: arr("Alerts", obj("One alert", ALERT)),
+    limit: d("Alerts this tier allows"),
+  }),
+  test_liquidation_alert: obj("Test delivery result", {
+    delivered: d("Whether the destination accepted the test message"),
+    status: d("The alert's status afterwards"),
+    error: d("The destination's answer when it was not delivered"),
+  }),
+  delete_liquidation_alert: obj("Deletion", { deleted: d("true"), id: d("The deleted alert's id") }),
   run_query: obj("Query result", {
     columns: arr("Column names in row order", d("Name")),
     column_types: arr("ClickHouse types in row order", d("Type")),
@@ -677,6 +709,7 @@ const toolSchemas: Record<string, Schema> = {
 const NOTICE = d(
   "Present when the API added a note: how a market name was read, that data starts later than asked because of the history window, or a next step such as a free key"
 );
+
 
 export const outputSchemas: Record<string, Schema> = Object.fromEntries(
   Object.entries(toolSchemas).map(([name, schema]) => [
