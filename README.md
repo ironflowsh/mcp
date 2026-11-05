@@ -88,7 +88,7 @@ To host the HTTP server yourself: `npx -y -p @ironflowsh/mcp ironflow-mcp-http` 
 
 **Status:** `get_status`, `get_status_metrics`, `get_status_history`
 
-Markets can be given as display symbols (`BTC-PERP`, `xyz:NVDA-PERP`, `HYPE/USDC`) or Hyperliquid names (`BTC`, `@107`, `xyz:NVDA`), and times as Unix ms, Unix seconds or ISO 8601. When the API reads a name, or serves a window that starts later than asked because of the key's history limit, the result starts with a `notice` saying so. Fill history covers a rolling 12 months. There is no order book, order status or streaming tool.
+Markets can be given as display symbols (`BTC-PERP`, `xyz:NVDA-PERP`, `HYPE/USDC`) or Hyperliquid names (`BTC`, `@107`, `xyz:NVDA`), and times as Unix ms, Unix seconds or ISO 8601. When the API reads a name, or serves a window that starts later than asked because of the key's history limit, the result starts with a `notice` saying so. Fill history covers a rolling 12 months. There is no order book, order status or streaming tool; for live feeds the REST API has `/v1/liquidations/stream` and `/v1/trades/stream` (Server-Sent Events).
 
 ## Configuration
 

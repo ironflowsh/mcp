@@ -1,5 +1,8 @@
 # Publishes server.json to the MCP Registry. Run it by hand after the npm
 # release of the same version (the registry checks the npm package exists).
+# It waits until npm serves that version: run right after npm publish, the
+# registry's check got a 404 and the publish failed (0.13.0 and 0.13.1 never
+# reached the registry, 2026-11-04 and 11-05).
 # Uses GitHub's OIDC identity for this repo, so it does not depend on any
 # person's organization membership being public.
 #
@@ -14,6 +17,13 @@ on:
     inputs:
       retire:
         description: "Old server name to mark deleted before publishing (after a rename), e.g. io.github.ironflowsh/mcp"
+        required: false
+        default: ""
+  # release.yml calls this after the npm publish and the GitHub release.
+  workflow_call:
+    inputs:
+      retire:
+        type: string
         required: false
         default: ""
 
@@ -42,5 +52,30 @@ jobs:
             exit 1
           fi
           ./mcp-publisher status --status deleted --all-versions -y --message "Renamed to $NEW" "$RETIRE"
+      - name: Wait for npm to serve this version
+        run: |
+          P="$(jq -r '.packages[0].identifier' server.json)"
+          V="$(jq -r '.packages[0].version' server.json)"
+          URL="https://registry.npmjs.org/$(jq -rn --arg p "$P" '$p | @uri')/$V"
+          for i in $(seq 1 30); do
+            if curl -fsS -o /dev/null "$URL"; then
+              echo "npm serves $P@$V"
+              exit 0
+            fi
+            echo "npm does not serve $P@$V yet ($i/30); waiting 20 s"
+            sleep 20
+          done
+          echo "npm still does not serve $P@$V after 10 minutes: run npm publish first" >&2
+          exit 1
       - name: Publish
-        run: ./mcp-publisher publish
+        # The registry reads npm through its own cache, which can lag the
+        # check above by a minute.
+        run: |
+          for i in 1 2 3 4; do
+            if ./mcp-publisher publish; then
+              exit 0
+            fi
+            echo "publish failed (attempt $i of 4); retrying in 45 s"
+            sleep 45
+          done
+          exit 1

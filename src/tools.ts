@@ -609,7 +609,7 @@ export const tools: ToolDef[] = [
   {
     name: "get_user_funding",
     title: "Wallet funding payments",
-    description: "Funding a Hyperliquid wallet paid or received, per market per bucket. Positive means received, negative means paid. bucket=1d gives daily totals, 1h the raw hourly payments.",
+    description: "Funding a Hyperliquid wallet paid or received, per market per bucket: Hyperliquid's own ledger, every hourly payment back to September 2025 (Hyperliquid's API returns only daily totals that far back). Positive means received, negative means paid. bucket=1d gives daily totals, 1h the hourly payments.",
     inputSchema: {
       type: "object",
       properties: {
