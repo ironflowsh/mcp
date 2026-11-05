@@ -28,6 +28,9 @@ export interface ToolDef {
     required: string[];
   };
   handler: (args: Record<string, unknown>, api: IronflowAPI) => Promise<string>;
+  // What the tool does beyond reading, for the MCP annotations. Omitted: the
+  // tool only reads.
+  annotations?: { readOnlyHint: boolean; destructiveHint: boolean; idempotentHint: boolean };
 }
 
 // ─── Arg validation helpers ──────────────────────────────────────────────────
@@ -87,6 +90,15 @@ function optionalTime(args: Record<string, unknown>, key: string): string {
 }
 
 // Shared parameter descriptions. The API resolves Hyperliquid names itself.
+// alertId reads an alert id: a UUID, so it cannot reach another path.
+function alertId(args: Record<string, unknown>): string {
+  const id = requireString(args, "id").trim().toLowerCase();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id)) {
+    throw new Error("id must be an alert id such as 6f1c2a3b-... (list_liquidation_alerts lists them)");
+  }
+  return id;
+}
+
 const MARKET = "Market: BTC-PERP, xyz:NVDA-PERP, HYPE/USDC, or a Hyperliquid name (BTC, @107, xyz:NVDA)";
 const MARKET_FILTER = "Optional market filter: BTC-PERP or a Hyperliquid name (BTC, xyz:NVDA)";
 const time = (bound: "start" | "end", extra = "") =>
@@ -353,6 +365,84 @@ export const tools: ToolDef[] = [
       const limit = optionalNumber(args, "limit", 20);
       const data = await api.getLiquidations(market, String(limit));
       return JSON.stringify(data, null, 2);
+    },
+  },
+  {
+    name: "create_liquidation_alert",
+    title: "Create liquidation alert",
+    description:
+      "Have Ironflow post Hyperliquid liquidations to the user's Discord channel, Slack channel, Telegram chat or HTTPS webhook as they happen (within seconds), filtered by market, side, size and wallet. It keeps running after the conversation: use it when the user wants to be told about liquidations, not just to see them now. Needs an API key (free key: 1 alert; Explorer 5; Builder 20). Give url (a Discord channel webhook from channel settings, Integrations, Webhooks, Copy Webhook URL; a Slack incoming webhook; or any public https URL) or telegram_chat (then tell the user to add the bot named in the result's setup to that chat). A plain webhook gets signed JSON, and its signing_secret appears only in this result, so pass it on. Then call test_liquidation_alert to check that it arrives.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        url: { type: "string", description: "Where to post: https://discord.com/api/webhooks/..., https://hooks.slack.com/services/... or a public https URL (or use telegram_chat)" },
+        telegram_chat: { type: "string", description: "A Telegram chat instead of url: @channel or group name, or a numeric chat id (-100...)" },
+        markets: { type: "string", description: "Comma-separated markets, e.g. BTC,ETH-PERP,xyz:NVDA (Hyperliquid names work); omit for every market" },
+        side: { type: "string", enum: ["any", "long", "short"], description: "Which positions: long = longs liquidated (default any)" },
+        min_usd: { type: "number", description: "Smallest liquidation to report, in USD (default 0; 100000 keeps a channel readable)" },
+        address: { type: "string", description: "Only this wallet's liquidations (0x...)" },
+        name: { type: "string", description: "Label shown in each message, e.g. BTC whales" },
+      },
+      required: [],
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
+    handler: async (args, api) => {
+      const url = optionalString(args, "url", "");
+      const telegram = optionalString(args, "telegram_chat", "");
+      if (!url && !telegram) {
+        throw new Error("give url (Discord, Slack or https webhook) or telegram_chat");
+      }
+      const body: Record<string, unknown> = url ? { url } : { telegram_chat: telegram };
+      const markets = optionalString(args, "markets", "");
+      if (markets) body.markets = markets;
+      const side = optionalString(args, "side", "");
+      if (side) body.side = side;
+      if (args.min_usd !== undefined) body.min_usd = optionalNumber(args, "min_usd", 0);
+      const address = optionalString(args, "address", "");
+      if (address) body.address = address;
+      const name = optionalString(args, "name", "");
+      if (name) body.name = name;
+      return JSON.stringify(await api.post("/v1/alerts", body), null, 2);
+    },
+  },
+  {
+    name: "list_liquidation_alerts",
+    title: "List liquidation alerts",
+    description:
+      "The Hyperliquid liquidation alerts on this API key's account: where each posts (host only), its filter, whether it is active, failed deliveries in a row with the last error, liquidations sent so far, and how many alerts the tier allows. An alert is disabled after 20 failed deliveries in a row; test_liquidation_alert re-enables it once the destination works again.",
+    inputSchema: { type: "object", properties: {}, required: [] },
+    handler: async (_args, api) => JSON.stringify(await api.get("/v1/alerts"), null, 2),
+  },
+  {
+    name: "test_liquidation_alert",
+    title: "Test liquidation alert",
+    description:
+      "Send a sample Hyperliquid liquidation, marked as a test, to an alert's destination now and report whether it arrived (delivered true or false, with the destination's answer). A delivered test switches a disabled alert back on. One test per alert every 10 seconds.",
+    inputSchema: {
+      type: "object",
+      properties: { id: { type: "string", description: "Alert id from create_liquidation_alert or list_liquidation_alerts" } },
+      required: ["id"],
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
+    handler: async (args, api) => {
+      const id = alertId(args);
+      return JSON.stringify(await api.post(`/v1/alerts/${id}/test`, {}), null, 2);
+    },
+  },
+  {
+    name: "delete_liquidation_alert",
+    title: "Delete liquidation alert",
+    description: "Stop and remove one Hyperliquid liquidation alert from this API key's account; nothing more is sent to its destination.",
+    inputSchema: {
+      type: "object",
+      properties: { id: { type: "string", description: "Alert id from list_liquidation_alerts" } },
+      required: ["id"],
+    },
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
+    handler: async (args, api) => {
+      const id = alertId(args);
+      await api.del(`/v1/alerts/${id}`);
+      return JSON.stringify({ deleted: true, id });
     },
   },
 

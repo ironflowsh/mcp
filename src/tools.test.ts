@@ -29,8 +29,8 @@ function findTool(name: string) {
 // ─── Tool listing ─────────────────────────────────────────────────────────────
 
 describe("tools array", () => {
-  it("exports 41 tools", () => {
-    expect(tools).toHaveLength(41);
+  it("exports 45 tools", () => {
+    expect(tools).toHaveLength(45);
   });
 
   it("drops tools whose tables stopped updating", () => {
@@ -467,5 +467,52 @@ describe("market parameters", () => {
       const prop = tool.inputSchema.properties.market;
       if (prop) expect(prop.description, tool.name).toMatch(/Hyperliquid name/);
     }
+  });
+});
+
+describe("liquidation alert tools", () => {
+  it("create sends only the fields given", async () => {
+    const post = vi.fn().mockResolvedValue({ id: "6f1c2a3b-0000-4000-8000-000000000001", type: "discord" });
+    const api = mockApi({ post });
+    const out = await findTool("create_liquidation_alert").handler(
+      { url: "https://discord.com/api/webhooks/1/x", markets: "BTC,ETH", side: "long", min_usd: 100000 },
+      api
+    );
+    expect(post).toHaveBeenCalledWith("/v1/alerts", {
+      url: "https://discord.com/api/webhooks/1/x",
+      markets: "BTC,ETH",
+      side: "long",
+      min_usd: 100000,
+    });
+    expect(JSON.parse(out).type).toBe("discord");
+  });
+
+  it("create needs a url or a telegram chat", async () => {
+    await expect(findTool("create_liquidation_alert").handler({}, mockApi())).rejects.toThrow("telegram_chat");
+    const post = vi.fn().mockResolvedValue({ type: "telegram" });
+    await findTool("create_liquidation_alert").handler({ telegram_chat: "@my_alerts", min_usd: 250000 }, mockApi({ post }));
+    expect(post).toHaveBeenCalledWith("/v1/alerts", { telegram_chat: "@my_alerts", min_usd: 250000 });
+  });
+
+  it("test and delete take only an alert id", async () => {
+    const post = vi.fn().mockResolvedValue({ delivered: true, status: "active" });
+    const del = vi.fn().mockResolvedValue(undefined);
+    const api = mockApi({ post, del });
+    const id = "6F1C2A3B-0000-4000-8000-000000000001";
+    await findTool("test_liquidation_alert").handler({ id }, api);
+    expect(post).toHaveBeenCalledWith(`/v1/alerts/${id.toLowerCase()}/test`, {});
+    const out = await findTool("delete_liquidation_alert").handler({ id }, api);
+    expect(del).toHaveBeenCalledWith(`/v1/alerts/${id.toLowerCase()}`);
+    expect(JSON.parse(out)).toEqual({ deleted: true, id: id.toLowerCase() });
+    for (const bad of ["../keys", "6f1c2a3b", "6f1c2a3b-0000-4000-8000-000000000001/../x"]) {
+      await expect(findTool("delete_liquidation_alert").handler({ id: bad }, api), bad).rejects.toThrow("alert id");
+    }
+    expect(del).toHaveBeenCalledTimes(1);
+  });
+
+  it("list reads /v1/alerts", async () => {
+    const get = vi.fn().mockResolvedValue({ alerts: [], limit: 1 });
+    await findTool("list_liquidation_alerts").handler({}, mockApi({ get }));
+    expect(get).toHaveBeenCalledWith("/v1/alerts");
   });
 });

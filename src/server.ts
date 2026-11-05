@@ -18,11 +18,11 @@ import { tools } from "./tools.js";
 
 // One-line summary for MCP directories and client server lists.
 const DESCRIPTION =
-  "Read-only Hyperliquid market data and wallet analytics from our own nodes: trades, funding, liquidations, open interest, wallet PnL and trader rankings. Native perps, HIP-3, HIP-4 and spot. No API key needed.";
+  "Hyperliquid market data and wallet analytics from our own nodes, plus liquidation alerts to Discord, Slack, Telegram or a webhook: trades, funding, liquidations, open interest, wallet PnL and trader rankings. Native perps, HIP-3, HIP-4 and spot. No API key needed.";
 
 // Server-level guidance the client shows the model alongside the tool list.
 const INSTRUCTIONS =
-  "Read-only Hyperliquid market data from Ironflow's own nodes: trades, candles, funding, open interest, liquidations, mark prices, market snapshots and wallet analytics for native perps, HIP-3 builder markets, HIP-4 outcomes and spot. Markets take display symbols (BTC-PERP, xyz:NVDA-PERP, HYPE/USDC) or Hyperliquid names (BTC, @107, xyz:NVDA); list_markets with q finds a name. Times take Unix ms, Unix seconds or ISO 8601. Where to start: liquidations with get_liquidations (rows) or get_liquidation_summary (totals by market and window); a wallet with get_user_state (positions), get_user_pnl_series and get_user_funding; market moves with get_markets_snapshot, get_candles and get_open_interest_changes; who trades with get_top_traders and get_market_top_wallets. A result that starts with a notice says how a market name was read or that the data starts later than asked; pass its next step on to the user. For anything the named tools do not cover, call describe_data and then run_query with ClickHouse SQL over the hl.* tables. Keyless use allows 30 requests per minute, 2,000 per day and 24 hours of history; a free key from https://ironflow.sh/key raises that to 60 per minute and 30 days.";
+  "Hyperliquid market data from Ironflow's own nodes, and liquidation alerts: trades, candles, funding, open interest, liquidations, mark prices, market snapshots and wallet analytics for native perps, HIP-3 builder markets, HIP-4 outcomes and spot. Markets take display symbols (BTC-PERP, xyz:NVDA-PERP, HYPE/USDC) or Hyperliquid names (BTC, @107, xyz:NVDA); list_markets with q finds a name. Times take Unix ms, Unix seconds or ISO 8601. Where to start: liquidations with get_liquidations (rows) or get_liquidation_summary (totals by market and window); a wallet with get_user_state (positions), get_user_pnl_series and get_user_funding; market moves with get_markets_snapshot, get_candles and get_open_interest_changes; who trades with get_top_traders and get_market_top_wallets. To have liquidations posted to the user's Discord, Slack, Telegram or webhook as they happen, use create_liquidation_alert (needs an API key), then test_liquidation_alert. A result that starts with a notice says how a market name was read or that the data starts later than asked; pass its next step on to the user. For anything the named tools do not cover, call describe_data and then run_query with ClickHouse SQL over the hl.* tables. Keyless use allows 30 requests per minute, 2,000 per day and 24 hours of history; a free key from https://ironflow.sh/key raises that to 60 per minute and 30 days.";
 
 // Reads the package version from package.json so MCP clients see the real
 // version in serverInfo instead of a constant that drifts on every release.
@@ -78,16 +78,17 @@ export function createServer(api: IronflowAPI, version: string, options: ServerO
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    // Every tool only reads, from data outside this server: readOnlyHint
-    // and openWorldHint. The title appears at the top level and in the
-    // annotations, which older clients read.
+    // Most tools only read, from data outside this server: readOnlyHint
+    // and openWorldHint. The alert tools say what they change. The title
+    // appears at the top level and in the annotations, which older clients
+    // read.
     tools: tools.map((t) => ({
       name: t.name,
       title: t.title,
       description: t.description,
       inputSchema: t.inputSchema,
       outputSchema: outputSchemas[t.name],
-      annotations: { title: t.title, readOnlyHint: true, openWorldHint: true },
+      annotations: { title: t.title, ...(t.annotations ?? { readOnlyHint: true }), openWorldHint: true },
     })),
   }));
 

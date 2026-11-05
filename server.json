@@ -2,17 +2,17 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.ironflowsh/hyperliquid",
   "title": "Ironflow: Hyperliquid data",
-  "description": "Read-only Hyperliquid data for AI agents: fills, candles, funding, liquidations, wallet analytics.",
+  "description": "Hyperliquid data and liquidation alerts for AI agents: fills, candles, funding, wallet analytics.",
   "repository": {
     "url": "https://github.com/ironflowsh/mcp",
     "source": "github"
   },
-  "version": "0.13.3",
+  "version": "0.14.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@ironflowsh/mcp",
-      "version": "0.13.3",
+      "version": "0.14.0",
       "transport": {
         "type": "stdio"
       },
