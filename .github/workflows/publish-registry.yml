@@ -19,6 +19,13 @@ on:
         description: "Old server name to mark deleted before publishing (after a rename), e.g. io.github.ironflowsh/mcp"
         required: false
         default: ""
+  # release.yml calls this after the npm publish and the GitHub release.
+  workflow_call:
+    inputs:
+      retire:
+        type: string
+        required: false
+        default: ""
 
 permissions:
   id-token: write

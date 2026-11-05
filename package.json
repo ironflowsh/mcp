@@ -23,7 +23,8 @@
     "dev": "tsc --watch",
     "test": "vitest run",
     "prepublishOnly": "rm -rf build && npm run build",
-    "start:http": "node build/http.js"
+    "start:http": "node build/http.js",
+    "bump": "node scripts/bump.mjs"
   },
   "files": [
     "build",

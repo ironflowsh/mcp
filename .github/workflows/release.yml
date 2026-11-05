@@ -1,0 +1,83 @@
+# Releases the version in package.json when a merge to main changes it.
+#
+#   1. checks package.json, package-lock.json and server.json name the same
+#      version, then runs the tests;
+#   2. publishes to npm through npm trusted publishing (no token: npm trusts
+#      this workflow of this repo, set once on npmjs.com);
+#   3. creates the GitHub release vX.Y.Z (Glama rebuilds from it);
+#   4. registers the version in the MCP Registry once npm serves it
+#      (publish-registry.yml);
+#   5. M2 deploys the hosted server from the new tag by itself within five
+#      minutes (deploy/m2/mcp-autodeploy.sh in the API repo).
+#
+# To release: bump the version in the PR (npm run bump -- 0.13.3) and merge.
+# Every step skips what is already done, so a failed run can be re-run from
+# the Actions tab (Run workflow) without publishing twice.
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths: [package.json]
+  workflow_dispatch:
+
+permissions:
+  contents: write # the tag and the GitHub release
+  id-token: write # npm trusted publishing and the MCP Registry login
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Version
+        id: v
+        run: |
+          V="$(jq -r .version package.json)"
+          for got in "$(jq -r .version server.json)" "$(jq -r '.packages[0].version' server.json)" "$(jq -r .version package-lock.json)"; do
+            if [ "$got" != "$V" ]; then
+              echo "package.json says $V but server.json or package-lock.json says $got; run npm run bump -- $V" >&2
+              exit 1
+            fi
+          done
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          if npm view "@ironflowsh/mcp@$V" version >/dev/null 2>&1; then
+            echo "npm=done" >> "$GITHUB_OUTPUT"
+            echo "npm already has $V"
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/v$V" >/dev/null; then
+            echo "tag=done" >> "$GITHUB_OUTPUT"
+            echo "tag v$V already exists"
+          fi
+
+      - run: npm ci
+      - run: npm test
+
+      - name: Publish to npm
+        if: steps.v.outputs.npm != 'done'
+        run: |
+          # Trusted publishing needs npm 11.5.1 or later.
+          npm install -g npm@^11.5.1
+          npm publish --access public
+
+      - name: GitHub release
+        if: steps.v.outputs.tag != 'done'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          V: ${{ steps.v.outputs.version }}
+        run: gh release create "v$V" --target "$GITHUB_SHA" --title "v$V" --latest --generate-notes
+
+  registry:
+    needs: release
+    uses: ./.github/workflows/publish-registry.yml
