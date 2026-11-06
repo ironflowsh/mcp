@@ -275,7 +275,7 @@ export class IronflowAPI {
 
   // ─── Analytics ────────────────────────────────────────────────────────
 
-  async getLiquidationLevels(market: string, bucket_size: string = "100"): Promise<unknown> {
+  async getLiquidationLevels(market: string, bucket_size: string = "auto"): Promise<unknown> {
     return this.get("/v1/analytics/liquidation-levels", { market, bucket_size });
   }
 

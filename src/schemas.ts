@@ -365,6 +365,8 @@ const toolSchemas: Record<string, Schema> = {
 
   get_liquidation_levels: obj("Liquidated notional by price bucket", {
     data: arr("Price buckets", obj("One bucket", { market: F.market })),
+    bucket_size: d("Bucket width used (the one picked for auto)"),
+    notice: d("Present without a key: the result is a 10-level sample"),
   }),
 
   get_vault_leaderboard: obj("Vaults ranked by net deposits", {
