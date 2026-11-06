@@ -478,7 +478,7 @@ export const tools: ToolDef[] = [
     name: "get_liquidation_summary",
     title: "Liquidation summary",
     description:
-      "Liquidations on Hyperliquid over a trailing window, totalled across every market or the ones named: count, wallets, notional, longs vs shorts liquidated, the top markets and the largest single liquidation with its price. Use it for 'who got liquidated in the last hour?' or 'how much was liquidated today?'. For the individual liquidations use get_liquidations; for liquidations grouped by price use get_liquidation_levels. Windows from 15m to 24h without a key, 7d with one. Totals are computed by the API over every liquidation, not sampled.",
+      "Liquidations on Hyperliquid over a trailing window, totalled across every market or the ones named: count, wallets, notional, longs vs shorts liquidated, the top markets and the largest single liquidation with its price. Use it for 'who got liquidated in the last hour?' or 'how much was liquidated today?'. For the individual liquidations use get_liquidations; for liquidations grouped by price use get_liquidation_levels; for where open positions would be liquidated next use get_liquidation_map. Windows from 15m to 24h without a key, 7d with one. Totals are computed by the API over every liquidation, not sampled.",
     inputSchema: {
       type: "object",
       properties: {
@@ -582,7 +582,7 @@ export const tools: ToolDef[] = [
   {
     name: "get_liquidation_levels",
     title: "Liquidation levels",
-    description: "Liquidations that happened on a Hyperliquid perp, bucketed by price and side: where longs and shorts were wiped out (side sell = a liquidated long). These are past liquidations, not projected liquidation prices. Without a key you get the 10 busiest levels of the last 24 hours; any key, including a free one (https://ironflow.sh/key), returns every level.",
+    description: "Liquidations that happened on a Hyperliquid perp, bucketed by price and side: where longs and shorts were wiped out (side sell = a liquidated long). These are past liquidations; for where open positions would be liquidated next, use get_liquidation_map. Without a key you get the 10 busiest levels of the last 24 hours; any key, including a free one (https://ironflow.sh/key), returns every level.",
     inputSchema: {
       type: "object",
       properties: {
