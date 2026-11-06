@@ -478,7 +478,7 @@ export const tools: ToolDef[] = [
     name: "get_liquidation_summary",
     title: "Liquidation summary",
     description:
-      "Liquidations on Hyperliquid over a trailing window, totalled across every market or the ones named: count, wallets, notional, longs vs shorts liquidated, the top markets and the largest single liquidation with its price. Use it for 'who got liquidated in the last hour?' or 'how much was liquidated today?'. For the individual liquidations use get_liquidations; for liquidation prices still ahead use get_liquidation_levels. Windows from 15m to 24h without a key, 7d with one. Totals are computed by the API over every liquidation, not sampled.",
+      "Liquidations on Hyperliquid over a trailing window, totalled across every market or the ones named: count, wallets, notional, longs vs shorts liquidated, the top markets and the largest single liquidation with its price. Use it for 'who got liquidated in the last hour?' or 'how much was liquidated today?'. For the individual liquidations use get_liquidations; for liquidations grouped by price use get_liquidation_levels. Windows from 15m to 24h without a key, 7d with one. Totals are computed by the API over every liquidation, not sampled.",
     inputSchema: {
       type: "object",
       properties: {
@@ -582,18 +582,18 @@ export const tools: ToolDef[] = [
   {
     name: "get_liquidation_levels",
     title: "Liquidation levels",
-    description: "Liquidated notional on a Hyperliquid perp bucketed by price: where longs and shorts were wiped out. Needs an API key (a free key works, https://ironflow.sh/key); keyless calls return 403.",
+    description: "Liquidations that happened on a Hyperliquid perp, bucketed by price and side: where longs and shorts were wiped out (side sell = a liquidated long). These are past liquidations, not projected liquidation prices. Without a key you get the 10 busiest levels of the last 24 hours; any key, including a free one (https://ironflow.sh/key), returns every level.",
     inputSchema: {
       type: "object",
       properties: {
         market: { type: "string", description: MARKET },
-        bucket_size: { type: "string", description: "Price bucket size (1, 5, 10, 50, 100, 500, 1000, 5000). Default: 100" },
+        bucket_size: { type: "string", description: "Price bucket width: auto (default, about 0.25% of price, right for any coin) or a fixed 1, 5, 10, 50, 100, 500, 1000 or 5000" },
       },
       required: ["market"],
     },
     handler: async (args, api) => {
       const market = requireString(args, "market");
-      const bucket = optionalString(args, "bucket_size", "100");
+      const bucket = optionalString(args, "bucket_size", "auto");
       const data = await api.getLiquidationLevels(market, bucket);
       return JSON.stringify(data, null, 2);
     },
