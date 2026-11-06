@@ -135,3 +135,33 @@ describe("IronflowAPI.listMarkets", () => {
     expect(urlOf(fetchMock.mock.calls[1]).searchParams.has("issuer")).toBe(false);
   });
 });
+
+// The list endpoints sort oldest first; "latest" calls must ask for desc.
+describe("IronflowAPI latest rows", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const urls = async (call: (api: IronflowAPI) => Promise<unknown>): Promise<URL> => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ data: [{ mark_price: "1" }] }), { headers: { "content-type": "application/json" } }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    await call(new IronflowAPI("http://api"));
+    return new URL((fetchMock.mock.calls[0] as unknown as [string])[0]);
+  };
+
+  it("asks for the newest rows first", async () => {
+    for (const call of [
+      (a: IronflowAPI) => a.getPrice("BTC-PERP"),
+      (a: IronflowAPI) => a.getMarkPrices("BTC-PERP"),
+      (a: IronflowAPI) => a.getOpenInterest("BTC-PERP"),
+      (a: IronflowAPI) => a.getRecentTrades("BTC-PERP"),
+      (a: IronflowAPI) => a.getFundingRates("BTC-PERP"),
+      (a: IronflowAPI) => a.getLiquidations("BTC-PERP"),
+    ]) {
+      const u = await urls(call);
+      expect(u.searchParams.get("order"), u.pathname).toBe("desc");
+      vi.unstubAllGlobals();
+    }
+  });
+});
