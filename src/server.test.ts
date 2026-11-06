@@ -36,7 +36,7 @@ describe("tool listing", () => {
   it("gives every tool a title and annotations that say what it changes", async () => {
     const client = await connect({}, []);
     const { tools } = await client.listTools();
-    expect(tools.length).toBe(45);
+    expect(tools.length).toBe(46);
     const writes: Record<string, { destructive: boolean; idempotent: boolean }> = {
       create_liquidation_alert: { destructive: false, idempotent: false },
       test_liquidation_alert: { destructive: false, idempotent: false },

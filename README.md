@@ -78,7 +78,7 @@ To host the HTTP server yourself: `npx -y -p @ironflowsh/mcp ironflow-mcp-http` 
 
 **Market data:** `get_price`, `get_recent_trades`, `get_candles`, `get_funding_rates`, `get_open_interest`, `get_open_interest_changes`, `get_premium`, `get_outcome_markets`, `get_liquidations`, `get_liquidation_summary`, `get_auto_deleveraging`, `get_fills`, `get_mark_prices`, `get_vault_operations`, `list_markets`, `get_markets_snapshot`
 
-**Market analytics:** `get_funding_stats`, `get_pnl_leaderboard`, `get_market_top_wallets`, `get_wallet_labels`, `get_vault_leaderboard` and `get_liquidation_levels` (a 10-level sample without a key, every level with a free one)
+**Market analytics:** `get_funding_stats`, `get_pnl_leaderboard`, `get_market_top_wallets`, `get_wallet_labels`, `get_vault_leaderboard`, `get_liquidation_levels` (past liquidations by price; a 10-level sample without a key, every level with a free one) and `get_liquidation_map` (where open positions would be liquidated if the price moved, from every open position on our node)
 
 **Signals:** `get_top_traders`, `get_market_leaders`, `get_early_movers`, `get_trader_profile`
 

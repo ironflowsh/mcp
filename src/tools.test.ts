@@ -29,8 +29,8 @@ function findTool(name: string) {
 // ─── Tool listing ─────────────────────────────────────────────────────────────
 
 describe("tools array", () => {
-  it("exports 45 tools", () => {
-    expect(tools).toHaveLength(45);
+  it("exports 46 tools", () => {
+    expect(tools).toHaveLength(46);
   });
 
   it("drops tools whose tables stopped updating", () => {

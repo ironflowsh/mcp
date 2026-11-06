@@ -369,6 +369,35 @@ const toolSchemas: Record<string, Schema> = {
     notice: d("Present without a key: the result is a 10-level sample"),
   }),
 
+  get_liquidation_map: obj("Projected liquidations by price for one market", {
+    market: F.market,
+    mark_px: d("Current mark price"),
+    as_of: d("When the map was priced (RFC 3339)"),
+    snapshot: obj("The node state snapshot the positions come from", {
+      height: d("Block height"),
+      time: d("Block time (RFC 3339)"),
+      age_s: d("Seconds since the snapshot"),
+    }),
+    bucket_size: d("Price range width used"),
+    range_pct: d("Percent from the price covered"),
+    side: d("both, long or short"),
+    levels: arr("Price ranges, low to high", obj("One range", {
+      price_lo: d("Range low"),
+      price_hi: d("Range high"),
+      long_usd: d("Long notional liquidated in this range"),
+      short_usd: d("Short notional liquidated in this range"),
+      cum_long_usd: d("Long notional liquidated from the price down to here"),
+      cum_short_usd: d("Short notional liquidated from the price up to here"),
+    })),
+    coverage: obj("What the map covers", {
+      notional_usd: d("Open notional on the market"),
+      with_liq_px_pct: d("Percent of it with a liquidation price"),
+      portfolio_margin_pct: d("Percent priced with Hyperliquid's own liquidationPx"),
+    }),
+    stale: d("True when the last snapshot could not be read and an older map is served"),
+    notice: d("Present without a key: the result is a 10-range sample"),
+  }),
+
   get_vault_leaderboard: obj("Vaults ranked by net deposits", {
     window_days: d("Days covered (keyless: 1); absent when served by the Builder endpoint"),
     data: arr(
