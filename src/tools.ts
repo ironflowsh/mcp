@@ -599,6 +599,29 @@ export const tools: ToolDef[] = [
     },
   },
   {
+    name: "get_liquidation_map",
+    title: "Liquidation map",
+    description: "Where open positions on a Hyperliquid perp would be liquidated if the price moved: notional (size x liquidation price) by price range, longs below the current price and shorts above, with running totals from the price outward. Built from every open position in our node's latest state snapshot, about every 12 minutes (snapshot.age_s says how old). Cross-margin prices assume the account's other positions stay at mark, so a real move that drags correlated markets liquidates earlier; portfolio-margin accounts use Hyperliquid's own liquidation price. For liquidations that already happened use get_liquidation_levels. Without a key you get the 10 largest ranges within 10% of the price; any key, including a free one (https://ironflow.sh/key), returns every range.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        market: { type: "string", description: MARKET },
+        bucket_size: { type: "string", description: "Price range width: auto (default, about 0.25% of price) or a number in the market's price units" },
+        range_pct: { type: "number", description: "How far from the current price to cover, in percent. Default 20, max 50" },
+        side: { type: "string", enum: ["both", "long", "short"], description: "Which side's liquidations. Default both" },
+      },
+      required: ["market"],
+    },
+    handler: async (args, api) => {
+      const market = requireString(args, "market");
+      const bucket = optionalString(args, "bucket_size", "auto");
+      const range = optionalNumber(args, "range_pct", 20);
+      const side = optionalString(args, "side", "both");
+      const data = await api.getLiquidationMap(market, bucket, String(range), side);
+      return JSON.stringify(data, null, 2);
+    },
+  },
+  {
     name: "get_vault_leaderboard",
     title: "Vault leaderboard",
     description: `Hyperliquid vaults ranked by net deposits (deposits minus withdrawals) over the last ${VAULT_LEADERBOARD_DAYS} days, with depositor counts. Keyless calls see the last 24 hours; a free key from https://ironflow.sh/key gives the full ${VAULT_LEADERBOARD_DAYS} days.`,

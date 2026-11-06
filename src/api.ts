@@ -279,6 +279,10 @@ export class IronflowAPI {
     return this.get("/v1/analytics/liquidation-levels", { market, bucket_size });
   }
 
+  async getLiquidationMap(market: string, bucket_size: string = "auto", range_pct: string = "20", side: string = "both"): Promise<unknown> {
+    return this.get("/v1/liquidations/map", { market, bucket_size, range_pct, side });
+  }
+
   async getVaultLeaderboard(limit: string = "10"): Promise<unknown> {
     return this.get("/v1/analytics/vault-leaderboard", { limit });
   }
