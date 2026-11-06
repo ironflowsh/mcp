@@ -9,7 +9,8 @@
 //                                a free key for longer history
 
 const CLAMP_HEADER = "X-Ironflow-History-Clamped";
-const MAX_HEADER_CHARS = 400;
+// Our own API's notices run to about 350 characters; 1000 keeps them whole.
+const MAX_HEADER_CHARS = 1000;
 const MAX_NOTICE_CHARS = 1200;
 
 export interface ApiNotice {
@@ -78,11 +79,22 @@ export function formatNotices(notices: ApiNotice[]): string {
 // attachNotice puts the notice first in a tool result, where an agent reads
 // it before the data. A result that already has a string notice keeps it,
 // after ours.
+// The API copies its X-Ironflow-Notice header into a JSON body as "notice",
+// so a body notice that ours already says is dropped rather than repeated
+// (the hosted MCP printed the keyless notice twice until 0.15.2).
 export function attachNotice(result: Record<string, unknown>, notice: string): Record<string, unknown> {
   if (!notice) return result;
   const { notice: existing, ...rest } = result;
   if (existing === undefined || typeof existing === "string") {
-    return { notice: existing ? `${notice} ${existing}` : notice, ...rest };
+    if (!existing || sameText(notice).includes(sameText(existing))) return { notice, ...rest };
+    return { notice: `${notice} ${existing}`, ...rest };
   }
   return { api_notice: notice, ...result };
+}
+
+// sameText compares notices the way formatNotices words them: one space
+// between words, the first letter upper case and no closing full stop.
+function sameText(s: string): string {
+  const t = s.replace(/\s+/g, " ").trim().replace(/[.!?]+$/, "");
+  return t.charAt(0).toUpperCase() + t.slice(1);
 }

@@ -24,9 +24,9 @@ describe("readNotice", () => {
   });
 
   it("strips control characters and caps the length", () => {
-    const n = readNotice(new Headers({ "X-Ironflow-Notice": `a\tb${"x".repeat(1000)}` }));
+    const n = readNotice(new Headers({ "X-Ironflow-Notice": `a\tb${"x".repeat(3000)}` }));
     expect(n?.notice).toMatch(/^a b/);
-    expect(n?.notice?.length).toBeLessThanOrEqual(400);
+    expect(n?.notice?.length).toBeLessThanOrEqual(1000);
   });
 });
 
@@ -64,6 +64,14 @@ describe("attachNotice", () => {
   it("returns the result as is without a notice", () => {
     const result = { data: [] };
     expect(attachNotice(result, "")).toBe(result);
+  });
+
+  it("does not repeat a body notice that ours already says", () => {
+    const api = "keyless sample: the 10 busiest price levels. A free key returns every level: https://ironflow.sh/key";
+    const ours = formatNotices([{ notice: api }]);
+    expect(attachNotice({ notice: api, data: [] }, ours).notice).toBe(ours);
+    const withMarket = formatNotices([{ requestedMarket: "BTC", market: "BTC-PERP", notice: api }]);
+    expect(attachNotice({ notice: api }, withMarket).notice).toBe(withMarket);
   });
 
   it("keeps a notice the result already had", () => {
