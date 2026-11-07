@@ -121,6 +121,13 @@ export class IronflowAPI {
     return formatNotices(this.notices);
   }
 
+  // addNotice records a notice of the server's own for this tool call (an
+  // option value it read as an allowed one or left out). It is worded and
+  // placed with the API's notices, ahead of those its requests bring back.
+  addNotice(text: string): void {
+    if (text && this.notices.length < MAX_NOTICES) this.notices.push({ notice: text });
+  }
+
   private noteHeaders(res: Response, requestedMarket?: string): void {
     const n = readNotice(res.headers, requestedMarket);
     if (n && this.notices.length < MAX_NOTICES) this.notices.push(n);

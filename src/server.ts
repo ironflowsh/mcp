@@ -12,7 +12,8 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import type { IronflowAPI } from "./api.js";
 import { fitToBudget } from "./budget.js";
-import { attachNotice } from "./notice.js";
+import { fitEnums } from "./enums.js";
+import { attachNotice, enumNotice } from "./notice.js";
 import { outputSchemas } from "./schemas.js";
 import { type Toolset, toolsFor } from "./tools.js";
 
@@ -118,9 +119,17 @@ export function createServer(api: IronflowAPI, version: string, options: ServerO
     // One client copy per call, so the notices read below are this call's.
     const scoped = api.withContext({ client, tool: name });
     try {
-      const structured = structuredFrom(await tool.handler(args ?? {}, scoped));
+      // An option value outside the tool's list never reaches the API, which
+      // would answer 400: it is read as the allowed value it obviously means
+      // or, by a read-only tool, left out for the default, and the notice
+      // says which. A tool that changes something (readOnlyHint false)
+      // answers with an error instead of acting on a default.
+      const strict = tool.annotations?.readOnlyHint === false;
+      const { args: fitted, fixes } = fitEnums(tool.inputSchema, args ?? {}, { strict });
+      for (const fix of fixes) scoped.addNotice(enumNotice(fix));
+      const structured = structuredFrom(await tool.handler(fitted, scoped));
       // Compact JSON, trimmed to fit a client's per-result limit, with the
-      // API's notice (if any) first.
+      // notice (ours, then the API's, if any) first.
       const text = fitToBudget(attachNotice(structured, scoped.notice()));
       return {
         content: [{ type: "text", text }],
