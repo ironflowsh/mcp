@@ -7,6 +7,11 @@
 //                                `from` reached past the caller's history
 //   X-Ironflow-Notice            a plain-text next step, e.g. where to get
 //                                a free key for longer history
+//
+// The server adds notices of its own the same way, first: an option value it
+// read as an allowed one or left out (enumNotice, see enums.ts).
+
+import type { EnumFix } from "./enums.js";
 
 const CLAMP_HEADER = "X-Ironflow-History-Clamped";
 // Our own API's notices run to about 350 characters; 1000 keeps them whole.
@@ -50,6 +55,19 @@ const sentence = (s: string): string => {
   const t = s.charAt(0).toUpperCase() + s.slice(1);
   return /[.!?]$/.test(t) || /https?:\/\/\S+$/.test(t) ? t : `${t}.`;
 };
+
+// enumNotice words one option value the server did not pass on as given:
+// the value it was read as, or that it was ignored, and the values the
+// option takes, so the agent sends one of them next time.
+const MAX_SHOWN_CHARS = 40;
+export function enumNotice(fix: EnumFix): string {
+  const raw = typeof fix.given === "string" ? fix.given : (JSON.stringify(fix.given) ?? String(fix.given));
+  const given = JSON.stringify(raw.length > MAX_SHOWN_CHARS ? `${raw.slice(0, MAX_SHOWN_CHARS)}...` : raw);
+  const allowed = `(allowed: ${fix.allowed.join(", ")})`;
+  if (fix.usedAs !== undefined) return `Read ${fix.key} ${given} as ${fix.usedAs} ${allowed}.`;
+  if (fix.inList) return `Ignored ${fix.key} ${given} ${allowed}.`;
+  return `Ignored ${fix.key} ${given} ${allowed}, so the default applies.`;
+}
 
 // noticeLines words one response's notice for the agent. The API's notice
 // names the clamp header; the agent never sees headers, so the time it
