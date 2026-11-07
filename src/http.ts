@@ -32,7 +32,7 @@ import { callerHash, ClientMemory, clientFromInitialize, sanitizeClientApp, summ
 const DEFAULT_PORT = 8080;
 const MAX_BODY_BYTES = 1024 * 1024;
 const MCP_PATH = "/mcp";
-const INFO_URL = "https://ironflow.sh/api#mcp";
+const INFO_URL = "https://ironflow.sh/#mcp";
 
 const port = Number(process.env.PORT) || DEFAULT_PORT;
 const apiUrl = process.env.IRONFLOW_API_URL || "https://api.ironflow.sh";
