@@ -774,7 +774,7 @@ export const tools: ToolDef[] = [
   {
     name: "get_user_ledger",
     title: "Wallet ledger",
-    description: "Vault deposits, withdrawals and transfers for a Hyperliquid wallet. Positive amounts go into the account. Account deposits and withdrawals are recorded only up to 2026-06-06.",
+    description: "Vault deposits, withdrawals and transfers for a Hyperliquid wallet, including account deposits and withdrawals and transfers the wallet received. Positive amounts go into the account.",
     inputSchema: {
       type: "object",
       properties: {

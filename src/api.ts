@@ -211,9 +211,12 @@ export class IronflowAPI {
   }
 
   // ─── Convenience methods ──────────────────────────────────────────────
+  // The "latest" methods ask for order=desc: the list endpoints sort oldest
+  // first, so a limit-only call returned the oldest rows of the default
+  // window (get_price gave a mark about an hour old until 0.15.3).
 
   async getPrice(market: string): Promise<string> {
-    const resp = (await this.get("/v1/mark-prices", { market, limit: "1" })) as {
+    const resp = (await this.get("/v1/mark-prices", { market, limit: "1", order: "desc" })) as {
       data?: { mark_price?: string }[];
     };
     const price = resp.data?.[0]?.mark_price;
@@ -227,7 +230,7 @@ export class IronflowAPI {
     market: string,
     limit: string = "20"
   ): Promise<unknown> {
-    return this.get("/v1/trades", { market, limit });
+    return this.get("/v1/trades", { market, limit, order: "desc" });
   }
 
   async getCandles(
@@ -242,18 +245,18 @@ export class IronflowAPI {
     market: string,
     limit: string = "10"
   ): Promise<unknown> {
-    return this.get("/v1/funding", { market, limit });
+    return this.get("/v1/funding", { market, limit, order: "desc" });
   }
 
   async getOpenInterest(market: string): Promise<unknown> {
-    return this.get("/v1/open-interest", { market, limit: "1" });
+    return this.get("/v1/open-interest", { market, limit: "1", order: "desc" });
   }
 
   async getLiquidations(
     market: string,
     limit: string = "20"
   ): Promise<unknown> {
-    return this.get("/v1/liquidations", { market, limit });
+    return this.get("/v1/liquidations", { market, limit, order: "desc" });
   }
 
   async getFills(address: string, market: string = "", limit: string = "20"): Promise<unknown> {
@@ -263,7 +266,7 @@ export class IronflowAPI {
   }
 
   async getMarkPrices(market: string): Promise<unknown> {
-    return this.get("/v1/mark-prices", { market, limit: "1" });
+    return this.get("/v1/mark-prices", { market, limit: "1", order: "desc" });
   }
 
   async getVaultOperations(vault: string = "", address: string = "", limit: string = "20"): Promise<unknown> {
