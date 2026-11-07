@@ -101,8 +101,22 @@ describe("fitEnums", () => {
 
   it("throws for a required option it cannot read, which has no default", () => {
     const s = { properties: { side: { type: "string", enum: ["long", "short"] } }, required: ["side"] };
-    expect(() => fitEnums(s, { side: PROBE })).toThrow('"side" must be one of long, short');
+    expect(() => fitEnums(s, { side: PROBE })).toThrow(`"side" must be one of long, short, not "${PROBE}"`);
     expect(fitEnums(s, { side: "shorts" }).args).toEqual({ side: "short" });
+  });
+
+  it("throws instead of falling back when strict, and still reads obvious values", () => {
+    const s = { properties: { side: { type: "string", enum: ["any", "long", "short"] } } };
+    expect(() => fitEnums(s, { side: PROBE }, { strict: true })).toThrow(
+      `"side" must be one of any, long, short, not "${PROBE}"; nothing was changed`
+    );
+    expect(fitEnums(s, { side: "Longs" }, { strict: true })).toEqual({
+      args: { side: "long" },
+      fixes: [{ key: "side", given: "Longs", allowed: ["any", "long", "short"], usedAs: "long" }],
+    });
+    expect(fitEnums(s, { side: "all" }, { strict: true }).args).toEqual({ side: "any" });
+    expect(fitEnums(s, { side: "short" }, { strict: true })).toEqual({ args: { side: "short" }, fixes: [] });
+    expect(fitEnums(s, {}, { strict: true })).toEqual({ args: {}, fixes: [] });
   });
 
   it("fits each entry of a list option and keeps the list when every entry is allowed", () => {
@@ -117,11 +131,19 @@ describe("fitEnums", () => {
       { key: "markets", given: PROBE, allowed: ["perps", "outcomes", "spot"], usedAs: undefined, inList: true },
     ]);
     expect(fitEnums(s, { markets: `${PROBE}, futures` }).args).toEqual({});
+
+    // Strict: one entry that cannot be read refuses the whole list.
+    expect(() => fitEnums(s, { markets: ["perps", "futures"] }, { strict: true })).toThrow(
+      '"markets" must be one of perps, outcomes, spot, not "futures"; nothing was changed'
+    );
+    expect(fitEnums(s, { markets: ["Perp", "spot"] }, { strict: true }).args).toEqual({ markets: ["perps", "spot"] });
   });
 });
 
 // Every tool with an option list, called with the probe in each option: the
-// value never reaches the API, and the result's notice names it.
+// value never reaches the API. A read-only tool runs with its default and
+// the notice names the value; a tool that changes something (readOnlyHint
+// false) answers with an error and sends nothing.
 describe("tools called with values outside their lists", () => {
   const REQUIRED: Record<string, unknown> = {
     market: "BTC-PERP",
@@ -166,6 +188,7 @@ describe("tools called with values outside their lists", () => {
       .filter(([, p]) => p.enum)
       .map(([k]) => k);
   const enumTools = tools.filter((t) => listed(t).length > 0);
+  const writes = (t: (typeof tools)[number]) => t.annotations?.readOnlyHint === false;
 
   it("covers every tool with an option list", () => {
     // 19 tools when this was written, the three that failed in production
@@ -176,7 +199,27 @@ describe("tools called with values outside their lists", () => {
     );
   });
 
-  for (const tool of enumTools) {
+  it("has write tools among them, which are strict", () => {
+    expect(enumTools.filter(writes).map((t) => t.name)).toEqual(expect.arrayContaining(["create_liquidation_alert"]));
+  });
+
+  for (const tool of enumTools.filter(writes)) {
+    it(`${tool.name} changes something, so it refuses the probe and sends nothing`, async () => {
+      const client = await connect();
+      const args: Record<string, unknown> = { ...EXTRA[tool.name] };
+      for (const key of tool.inputSchema.required) args[key] = REQUIRED[key];
+      for (const key of listed(tool)) args[key] = PROBE;
+      const res = (await client.callTool({ name: tool.name, arguments: args })) as Result;
+
+      expect(res.isError).toBe(true);
+      expect(sent).toEqual([]);
+      const first = listed(tool)[0];
+      const allowed = tool.inputSchema.properties[first].enum!.join(", ");
+      expect(res.content[0].text).toBe(`Error: "${first}" must be one of ${allowed}, not "${PROBE}"; nothing was changed`);
+    });
+  }
+
+  for (const tool of enumTools.filter((t) => !writes(t))) {
     it(`${tool.name} never sends the probe and names it in the notice`, async () => {
       const client = await connect();
       const args: Record<string, unknown> = { ...EXTRA[tool.name] };
@@ -239,13 +282,36 @@ describe("tools called with values outside their lists", () => {
 
   it("keeps the notice on an error result", async () => {
     const client = await connect();
-    // create_liquidation_alert needs url or telegram_chat, so it fails
-    // before any request; the error still names the ignored side.
-    const res = (await client.callTool({ name: "create_liquidation_alert", arguments: { side: PROBE } })) as Result;
+    // get_candles needs a market, so it fails before any request; the error
+    // still names the ignored interval.
+    const res = (await client.callTool({ name: "get_candles", arguments: { interval: PROBE } })) as Result;
     expect(res.isError).toBe(true);
     expect(sent).toEqual([]);
     expect(res.content[0].text).toBe(
-      `Error: give url (Discord, Slack or https webhook) or telegram_chat Ignored side "${PROBE}" (allowed: any, long, short), so the default applies.`
+      `Error: "market" is required and must be a non-empty string Ignored interval "${PROBE}" (allowed: 1m, 5m, 15m, 1h, 4h, 1d), so the default applies.`
     );
+  });
+
+  it("creates an alert with a value an obvious one maps to, and says so", async () => {
+    const client = await connect();
+    const res = (await client.callTool({
+      name: "create_liquidation_alert",
+      arguments: { url: "https://hooks.slack.com/services/T0/B0/x", side: "longs" },
+    })) as Result;
+    expect(res.isError).toBeFalsy();
+    expect(sent).toHaveLength(1);
+    expect(JSON.parse(sent[0].slice(sent[0].indexOf(" ") + 1))).toEqual({ url: "https://hooks.slack.com/services/T0/B0/x", side: "long" });
+    expect(res.structuredContent?.notice).toBe('Read side "longs" as long (allowed: any, long, short).');
+  });
+
+  it("does not create an alert for any side when the side cannot be read", async () => {
+    const client = await connect();
+    const res = (await client.callTool({
+      name: "create_liquidation_alert",
+      arguments: { url: "https://hooks.slack.com/services/T0/B0/x", side: "liquidated longs", min_usd: 100000 },
+    })) as Result;
+    expect(res.isError).toBe(true);
+    expect(sent).toEqual([]);
+    expect(res.content[0].text).toBe('Error: "side" must be one of any, long, short, not "liquidated longs"; nothing was changed');
   });
 });

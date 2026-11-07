@@ -115,8 +115,11 @@ export function createServer(api: IronflowAPI, version: string, options: ServerO
     try {
       // An option value outside the tool's list never reaches the API, which
       // would answer 400: it is read as the allowed value it obviously means
-      // or left out for the default, and the notice says which.
-      const { args: fitted, fixes } = fitEnums(tool.inputSchema, args ?? {});
+      // or, by a read-only tool, left out for the default, and the notice
+      // says which. A tool that changes something (readOnlyHint false)
+      // answers with an error instead of acting on a default.
+      const strict = tool.annotations?.readOnlyHint === false;
+      const { args: fitted, fixes } = fitEnums(tool.inputSchema, args ?? {}, { strict });
       for (const fix of fixes) scoped.addNotice(enumNotice(fix));
       const structured = structuredFrom(await tool.handler(fitted, scoped));
       // Compact JSON, trimmed to fit a client's per-result limit, with the

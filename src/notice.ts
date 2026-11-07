@@ -11,7 +11,7 @@
 // The server adds notices of its own the same way, first: an option value it
 // read as an allowed one or left out (enumNotice, see enums.ts).
 
-import type { EnumFix } from "./enums.js";
+import { type EnumFix, shownValue } from "./enums.js";
 
 const CLAMP_HEADER = "X-Ironflow-History-Clamped";
 // Our own API's notices run to about 350 characters; 1000 keeps them whole.
@@ -59,10 +59,8 @@ const sentence = (s: string): string => {
 // enumNotice words one option value the server did not pass on as given:
 // the value it was read as, or that it was ignored, and the values the
 // option takes, so the agent sends one of them next time.
-const MAX_SHOWN_CHARS = 40;
 export function enumNotice(fix: EnumFix): string {
-  const raw = typeof fix.given === "string" ? fix.given : (JSON.stringify(fix.given) ?? String(fix.given));
-  const given = JSON.stringify(raw.length > MAX_SHOWN_CHARS ? `${raw.slice(0, MAX_SHOWN_CHARS)}...` : raw);
+  const given = shownValue(fix.given);
   const allowed = `(allowed: ${fix.allowed.join(", ")})`;
   if (fix.usedAs !== undefined) return `Read ${fix.key} ${given} as ${fix.usedAs} ${allowed}.`;
   if (fix.inList) return `Ignored ${fix.key} ${given} ${allowed}.`;

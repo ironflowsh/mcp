@@ -5,6 +5,8 @@
 // INVALID_PARAMETER and the agent gets nothing, so the server reads an
 // obvious equivalent as the allowed value ("1d" as 24h), leaves anything else
 // out so the tool's default applies, and says which in the result's notice.
+// A tool that creates, changes or deletes something does not act on a
+// default the caller did not choose: it answers with an error instead.
 
 // EnumFix is one option value the server did not pass on as given.
 export interface EnumFix {
@@ -95,6 +97,14 @@ export function closestAllowed(value: string, allowed: readonly string[]): strin
   return ms === undefined ? undefined : allowed.find((a) => durationMs(a) === ms);
 }
 
+// shownValue quotes a value the client sent for a notice or an error: short,
+// with any control characters escaped.
+const MAX_SHOWN_CHARS = 40;
+export function shownValue(v: unknown): string {
+  const raw = typeof v === "string" ? v : (JSON.stringify(v) ?? String(v));
+  return JSON.stringify(raw.length > MAX_SHOWN_CHARS ? `${raw.slice(0, MAX_SHOWN_CHARS)}...` : raw);
+}
+
 // fitOne reads one given value against allowed: undefined when it cannot
 // be read as one of them.
 function fitOne(given: unknown, allowed: readonly string[]): string | undefined {
@@ -106,13 +116,19 @@ function fitOne(given: unknown, allowed: readonly string[]): string | undefined 
 // what it changed. A value in the list passes as sent; one that obviously
 // means an allowed value is replaced by it; anything else is left out, so
 // the tool's default applies. A blank value is left out without a fix: the
-// tools read it as not set. A required option has no default, so a value
-// that cannot be read throws an error naming the allowed values.
-export function fitEnums(schema: EnumSchema, args: Record<string, unknown>): { args: Record<string, unknown>; fixes: EnumFix[] } {
+// tools read it as not set. A value that cannot be read throws an error
+// naming the allowed values instead when the option is required (it has no
+// default) or the call is strict: a tool that creates, changes or deletes
+// something must not do it with a default the caller did not choose.
+export function fitEnums(
+  schema: EnumSchema,
+  args: Record<string, unknown>,
+  { strict = false }: { strict?: boolean } = {}
+): { args: Record<string, unknown>; fixes: EnumFix[] } {
   const out = { ...args };
   const fixes: EnumFix[] = [];
-  const required = (key: string, allowed: readonly string[]): Error =>
-    new Error(`"${key}" must be one of ${allowed.join(", ")}`);
+  const refuse = (key: string, allowed: readonly string[], given: unknown): Error =>
+    new Error(`"${key}" must be one of ${allowed.join(", ")}, not ${shownValue(given)}${strict ? "; nothing was changed" : ""}`);
 
   for (const [key, prop] of Object.entries(schema.properties)) {
     const value = out[key];
@@ -126,7 +142,7 @@ export function fitEnums(schema: EnumSchema, args: Record<string, unknown>): { a
         continue;
       }
       const usedAs = fitOne(value, allowed);
-      if (usedAs === undefined && schema.required?.includes(key)) throw required(key, allowed);
+      if (usedAs === undefined && (strict || schema.required?.includes(key))) throw refuse(key, allowed, value);
       if (usedAs === undefined) delete out[key];
       else out[key] = usedAs;
       fixes.push({ key, given: value, allowed, usedAs });
@@ -147,12 +163,13 @@ export function fitEnums(schema: EnumSchema, args: Record<string, unknown>): { a
         continue;
       }
       const usedAs = fitOne(entry, allowed);
+      if (usedAs === undefined && strict) throw refuse(key, allowed, entry);
       if (usedAs !== undefined) kept.push(usedAs);
       listFixes.push({ key, given: entry, allowed, usedAs, inList: true });
     }
     // A list whose entries are all allowed passes as sent.
     if (listFixes.length === 0) continue;
-    if (kept.length === 0 && schema.required?.includes(key)) throw required(key, allowed);
+    if (kept.length === 0 && schema.required?.includes(key)) throw refuse(key, allowed, value);
     if (kept.length > 0) out[key] = [...new Set(kept)];
     else delete out[key];
     fixes.push(...listFixes);
