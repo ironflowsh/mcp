@@ -68,7 +68,7 @@ export function createServer(api: IronflowAPI, version: string, options: ServerO
       title: "Ironflow Hyperliquid",
       version,
       description: DESCRIPTION,
-      websiteUrl: "https://ironflow.sh/api#mcp",
+      websiteUrl: "https://ironflow.sh/#mcp",
       icons: [
         { src: "https://ironflow.sh/apple-touch-icon.png", mimeType: "image/png", sizes: ["256x256"] },
         { src: "https://ironflow.sh/favicon.svg", mimeType: "image/svg+xml", sizes: ["any"] },

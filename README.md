@@ -1,6 +1,8 @@
 # @ironflowsh/mcp
 
-MCP server for [Ironflow](https://ironflow.sh): Hyperliquid market data, wallet analytics and liquidation alerts for Claude, Cursor and any MCP client. It covers native perps, HIP-3 builder markets, HIP-4 outcome markets and spot. 45 tools: 41 read data, including `run_query` for read-only SQL over every Hyperliquid fill, wallet, funding and liquidation table, and 4 set up liquidation alerts that Ironflow posts to your Discord, Slack, Telegram or webhook.
+MCP server for [Ironflow](https://ironflow.sh), the agent cloud for Hyperliquid: market data, wallet analytics and liquidation alerts for Claude, Cursor and any MCP client. It covers native perps, HIP-3 builder markets, HIP-4 outcome markets and spot. 46 tools: 42 read data, including `run_query` for read-only SQL over every Hyperliquid fill, wallet, funding and liquidation table, and 4 manage liquidation alerts that Ironflow posts to your Discord, Slack, Telegram or webhook.
+
+To run an agent next to Hyperliquid, spin up an [Ironbox](https://ironflow.sh/nodes): a box in Tokyo with its own Hyperliquid node, 4.5 ms from the order API, and Ironflow's data on the same machine.
 
 No API key needed to start: keyless calls get 30 requests per minute, 2,000 per day and 24 hours of history. A free key from [ironflow.sh/key](https://ironflow.sh/key) raises that to 60 requests per minute and 30 days. Agents with a USDC wallet on Base can also pay per call with x402, from $0.001 and with no key ([pay per call](https://docs.ironflow.sh/guides/pay-per-call)).
 
