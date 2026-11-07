@@ -3,6 +3,8 @@
 
 import type { IncomingMessage } from "node:http";
 
+import type { Toolset } from "./tools.js";
+
 const KEY_PATTERN = /^if_[A-Za-z0-9_-]{8,128}$/;
 const IP_PATTERN = /^[0-9A-Fa-f.:]{2,45}$/;
 
@@ -38,4 +40,15 @@ export function clientIP(req: IncomingMessage, trustProxy: boolean): string | un
   const xff = req.headers["x-forwarded-for"];
   const first = (Array.isArray(xff) ? xff[0] : xff)?.split(",")[0]?.trim();
   return first && IP_PATTERN.test(first) ? first : undefined;
+}
+
+// readToolset reads ?toolset= on the MCP URL: "data" serves every tool
+// except the Ironbox ones (for directory listings that take data tools
+// only), none or "all" serves every tool. Anything else is an error, so a
+// typo cannot list the tools the URL meant to hide.
+export function readToolset(url: URL): Toolset {
+  const raw = url.searchParams.get("toolset")?.trim().toLowerCase() ?? "";
+  if (raw === "" || raw === "all") return "all";
+  if (raw === "data") return "data";
+  throw new HttpError(400, "Unknown toolset: use ?toolset=data for the data tools only, or leave it out for every tool");
 }

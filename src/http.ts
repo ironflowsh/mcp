@@ -9,6 +9,7 @@
 //
 // A key is optional. Send it as "Authorization: Bearer if_..." or, for
 // clients that cannot set headers, as ?key=if_... on the URL.
+// ?toolset=data serves every tool except the Ironbox ones.
 //
 // Environment:
 //   PORT               listen port (default 8080)
@@ -25,7 +26,7 @@ import { createServer as createHttpServer, IncomingMessage, ServerResponse } fro
 
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { IronflowAPI } from "./api.js";
-import { clientIP, HttpError, readKey } from "./request.js";
+import { clientIP, HttpError, readKey, readToolset } from "./request.js";
 import { createServer, packageVersion, type ToolOutcome } from "./server.js";
 import { callerHash, ClientMemory, clientFromInitialize, sanitizeClientApp, summarizeArgs, toolLogFields } from "./usage.js";
 
@@ -94,6 +95,7 @@ function describeRPC(body: unknown): string {
 async function handleMCP(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
   const started = Date.now();
   const key = readKey(req, url);
+  const toolset = readToolset(url);
   const body = await readBody(req);
   const ip = clientIP(req, forwardClientIP);
   const userAgent = sanitizeClientApp(req.headers["user-agent"]);
@@ -106,6 +108,7 @@ async function handleMCP(req: IncomingMessage, res: ServerResponse, url: URL): P
   const server = createServer(api, version, {
     fallbackClient: recalled || userAgent,
     onToolResult: (outcome) => outcomes.push(outcome),
+    toolset,
   });
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
@@ -119,6 +122,7 @@ async function handleMCP(req: IncomingMessage, res: ServerResponse, url: URL): P
         msg: "mcp",
         rpc: describeRPC(body),
         keyed: Boolean(key),
+        toolset: toolset === "all" ? undefined : toolset,
         status: res.statusCode,
         ms: Date.now() - started,
         client: initClient || recalled || undefined,

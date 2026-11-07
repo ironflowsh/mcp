@@ -1,7 +1,7 @@
 // Unit tests for MCP tool handlers.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { tools } from "./tools.js";
+import { IRONBOX_TOOLS, tools, toolsFor } from "./tools.js";
 import { outputSchemas } from "./schemas.js";
 import { structuredFrom } from "./server.js";
 import type { IronflowAPI } from "./api.js";
@@ -29,8 +29,16 @@ function findTool(name: string) {
 // ─── Tool listing ─────────────────────────────────────────────────────────────
 
 describe("tools array", () => {
-  it("exports 46 tools", () => {
-    expect(tools).toHaveLength(46);
+  it("exports 50 tools", () => {
+    expect(tools).toHaveLength(50);
+  });
+
+  it("the data toolset leaves out only the 4 Ironbox tools", () => {
+    expect(toolsFor()).toBe(tools);
+    const data = toolsFor("data").map((t) => t.name);
+    expect(data).toHaveLength(46);
+    expect(data.filter((n) => n.includes("ironbox"))).toEqual([]);
+    expect(tools.filter((t) => !data.includes(t.name)).map((t) => t.name)).toEqual(IRONBOX_TOOLS);
   });
 
   it("drops tools whose tables stopped updating", () => {
@@ -524,5 +532,46 @@ describe("liquidation alert tools", () => {
     const get = vi.fn().mockResolvedValue({ alerts: [], limit: 1 });
     await findTool("list_liquidation_alerts").handler({}, mockApi({ get }));
     expect(get).toHaveBeenCalledWith("/v1/alerts");
+  });
+});
+
+describe("Ironbox tools", () => {
+  const box = { id: "ibx_01JC7W2K", name: "funding-bot", state: "creating", size: "small", mode: "paper", runtime: "python" };
+
+  it("create sends only the fields given, markets as a list", async () => {
+    const post = vi.fn().mockResolvedValue(box);
+    const out = await findTool("create_ironbox").handler(
+      { name: " funding-bot ", mode: "paper", markets: ["perps", "Outcomes"], note: "" },
+      mockApi({ post })
+    );
+    expect(post).toHaveBeenCalledWith("/v1/ironbox", { name: "funding-bot", mode: "paper", markets: ["perps", "outcomes"] });
+    expect(JSON.parse(out)).toEqual(box);
+  });
+
+  it("create works with no arguments and reads comma-separated markets", async () => {
+    const post = vi.fn().mockResolvedValue(box);
+    await findTool("create_ironbox").handler({}, mockApi({ post }));
+    expect(post).toHaveBeenLastCalledWith("/v1/ironbox", {});
+    await findTool("create_ironbox").handler({ size: "large", runtime: "node", markets: "perps, spot" }, mockApi({ post }));
+    expect(post).toHaveBeenLastCalledWith("/v1/ironbox", { size: "large", runtime: "node", markets: ["perps", "spot"] });
+    await expect(findTool("create_ironbox").handler({ markets: [1] }, mockApi({ post }))).rejects.toThrow("markets");
+  });
+
+  it("list, get and delete read and remove by id", async () => {
+    const get = vi.fn().mockResolvedValue({ data: [box] });
+    const del = vi.fn().mockResolvedValue({ ...box, state: "deleted" });
+    const api = mockApi({ get, del });
+    expect(JSON.parse(await findTool("list_ironboxes").handler({}, api))).toEqual({ data: [box] });
+    expect(get).toHaveBeenLastCalledWith("/v1/ironbox");
+    await findTool("get_ironbox").handler({ id: " ibx_01JC7W2K " }, api);
+    expect(get).toHaveBeenLastCalledWith("/v1/ironbox/ibx_01JC7W2K");
+    const out = await findTool("delete_ironbox").handler({ id: "ibx_01JC7W2K" }, api);
+    expect(del).toHaveBeenCalledWith("/v1/ironbox/ibx_01JC7W2K");
+    expect(JSON.parse(out).state).toBe("deleted");
+    for (const bad of ["../keys", "ibx_", "6f1c2a3b", "ibx_1/../x", "ibx_1?x=1"]) {
+      await expect(findTool("delete_ironbox").handler({ id: bad }, api), bad).rejects.toThrow("Ironbox id");
+      await expect(findTool("get_ironbox").handler({ id: bad }, api), bad).rejects.toThrow("Ironbox id");
+    }
+    expect(del).toHaveBeenCalledTimes(1);
   });
 });

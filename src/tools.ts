@@ -24,7 +24,7 @@ export interface ToolDef {
   description: string;
   inputSchema: {
     type: "object";
-    properties: Record<string, { type: string; description: string; enum?: string[] }>;
+    properties: Record<string, { type: string; description: string; enum?: string[]; items?: { type: string; enum?: string[] } }>;
     required: string[];
   };
   handler: (args: Record<string, unknown>, api: IronflowAPI) => Promise<string>;
@@ -102,7 +102,29 @@ function alertId(args: Record<string, unknown>): string {
   return id;
 }
 
-const MARKET = "Market: BTC-PERP, xyz:NVDA-PERP, HYPE/USDC, or a Hyperliquid name (BTC, @107, xyz:NVDA)";
+// ironboxId reads an Ironbox id (ibx_...): letters, digits, _ and - only, so
+// it cannot reach another path.
+function ironboxId(args: Record<string, unknown>): string {
+  const id = requireString(args, "id").trim();
+  if (!/^ibx_[A-Za-z0-9_-]{1,64}$/.test(id)) {
+    throw new Error("id must be an Ironbox id such as ibx_... (list_ironboxes lists them)");
+  }
+  return id;
+}
+
+// ironboxMarkets reads markets as a list or a comma-separated string, as
+// agents send either, and gives the API a list.
+function ironboxMarkets(args: Record<string, unknown>): string[] | undefined {
+  const val = args.markets;
+  if (val === undefined || val === null || val === "") return undefined;
+  const list = typeof val === "string" ? val.split(",") : val;
+  if (!Array.isArray(list) || !list.every((m) => typeof m === "string")) {
+    throw new Error('"markets" must be a list such as ["perps", "spot"]');
+  }
+  return list.map((m) => m.trim().toLowerCase()).filter(Boolean);
+}
+
+const MARKET ="Market: BTC-PERP, xyz:NVDA-PERP, HYPE/USDC, or a Hyperliquid name (BTC, @107, xyz:NVDA)";
 const MARKET_FILTER = "Optional market filter: BTC-PERP or a Hyperliquid name (BTC, xyz:NVDA)";
 const time = (bound: "start" | "end", extra = "") =>
   `Window ${bound}: Unix ms or seconds, ISO 8601 (2026-10-01T00:00:00Z), or relative (-7d, -24h, now)${extra ? `. ${extra}` : ""}`;
@@ -446,6 +468,74 @@ export const tools: ToolDef[] = [
       const id = alertId(args);
       await api.del(`/v1/alerts/${id}`);
       return JSON.stringify({ deleted: true, id });
+    },
+  },
+  {
+    name: "create_ironbox",
+    title: "Spin up an Ironbox",
+    description:
+      "Spin up an Ironbox: a secure sandbox next to Hyperliquid where an agent runs and trades, with Ironflow data, analytics, alerts and execution built in. Needs an API key (a free key works). It starts in state creating; get_ironbox shows when it is running.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Name for the Ironbox, e.g. btc-funding-bot" },
+        size: { type: "string", enum: ["small", "medium", "large"], description: "small (default), medium or large" },
+        mode: { type: "string", enum: ["paper", "live"], description: "paper (default) trades with simulated funds; live trades real funds" },
+        runtime: { type: "string", enum: ["python", "node"], description: "python (default) or node" },
+        markets: {
+          type: "array",
+          items: { type: "string", enum: ["perps", "outcomes", "spot"] },
+          description: "Hyperliquid markets the agent trades: perps, outcomes (HIP-4), spot",
+        },
+        note: { type: "string", description: "Free text kept with the Ironbox, e.g. what the agent does" },
+      },
+      required: [],
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
+    handler: async (args, api) => {
+      const body: Record<string, unknown> = {};
+      for (const key of ["name", "size", "mode", "runtime", "note"]) {
+        const val = optionalString(args, key, "").trim();
+        if (val) body[key] = val;
+      }
+      const markets = ironboxMarkets(args);
+      if (markets) body.markets = markets;
+      return JSON.stringify(await api.post("/v1/ironbox", body), null, 2);
+    },
+  },
+  {
+    name: "list_ironboxes",
+    title: "List Ironboxes",
+    description:
+      "The Ironboxes on this API key's account, the sandboxes where agents run and trade next to Hyperliquid: id, name, state (creating, running, stopped, deleted or error), size, mode, runtime and markets.",
+    inputSchema: { type: "object", properties: {}, required: [] },
+    handler: async (_args, api) => JSON.stringify(await api.get("/v1/ironbox"), null, 2),
+  },
+  {
+    name: "get_ironbox",
+    title: "Get Ironbox",
+    description:
+      "One Ironbox by id: its state (creating, running, stopped, deleted or error), size, mode, runtime, Hyperliquid markets and region.",
+    inputSchema: {
+      type: "object",
+      properties: { id: { type: "string", description: "Ironbox id (ibx_...) from create_ironbox or list_ironboxes" } },
+      required: ["id"],
+    },
+    handler: async (args, api) => JSON.stringify(await api.get(`/v1/ironbox/${ironboxId(args)}`), null, 2),
+  },
+  {
+    name: "delete_ironbox",
+    title: "Delete Ironbox",
+    description: "Stop and delete one Ironbox from this API key's account; the agent in it stops running on Hyperliquid.",
+    inputSchema: {
+      type: "object",
+      properties: { id: { type: "string", description: "Ironbox id (ibx_...) from list_ironboxes" } },
+      required: ["id"],
+    },
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
+    handler: async (args, api) => {
+      const id = ironboxId(args);
+      return JSON.stringify((await api.del(`/v1/ironbox/${id}`)) ?? { id, state: "deleted" }, null, 2);
     },
   },
 
@@ -1187,3 +1277,14 @@ export const tools: ToolDef[] = [
     },
   },
 ];
+
+// A toolset picks the tools a server serves. "data" leaves out the Ironbox
+// tools, which run an agent that trades, for directory listings that take
+// data tools only (mcp.ironflow.sh/mcp?toolset=data).
+export type Toolset = "all" | "data";
+
+export const IRONBOX_TOOLS = ["create_ironbox", "list_ironboxes", "get_ironbox", "delete_ironbox"];
+
+export function toolsFor(toolset: Toolset = "all"): ToolDef[] {
+  return toolset === "data" ? tools.filter((t) => !IRONBOX_TOOLS.includes(t.name)) : tools;
+}
