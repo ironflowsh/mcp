@@ -206,8 +206,9 @@ export class IronflowAPI {
     return res.json();
   }
 
-  // del sends a DELETE; the API answers 204 with no body.
-  async del(path: string): Promise<void> {
+  // del sends a DELETE. Alerts answer 204 with no body (undefined); an
+  // Ironbox answers with the deleted object, which is returned.
+  async del(path: string): Promise<unknown> {
     const url = new URL(path, this.baseUrl);
     const res = await fetch(url.toString(), { method: "DELETE", headers: this.headers() });
     this.noteHeaders(res);
@@ -215,6 +216,7 @@ export class IronflowAPI {
       throw await this.apiError(res);
     }
     this.record(res.status);
+    return (res.headers.get("content-type") ?? "").includes("application/json") ? res.json() : undefined;
   }
 
   // ─── Convenience methods ──────────────────────────────────────────────

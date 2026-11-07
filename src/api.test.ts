@@ -63,6 +63,18 @@ describe("IronflowAPI upstream calls", () => {
     expect(base.upstreamCalls()).toEqual([{ status: 200 }, { status: 403, code: "TIER_FORBIDDEN" }, { status: 502 }]);
   });
 
+  it("del returns a JSON body, and nothing for 204", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "ibx_1", state: "deleted" }), { headers: { "content-type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const api = new IronflowAPI("http://api");
+    expect(await api.del("/v1/ironbox/ibx_1")).toEqual({ id: "ibx_1", state: "deleted" });
+    expect(await api.del("/v1/alerts/x")).toBeUndefined();
+    expect((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].method).toBe("DELETE");
+  });
+
   it("reports whether a key is set", () => {
     expect(new IronflowAPI("http://api").hasKey()).toBe(false);
     expect(new IronflowAPI("http://api", "if_test").withContext({}).hasKey()).toBe(true);
