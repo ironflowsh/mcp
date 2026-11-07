@@ -1,6 +1,6 @@
 import type { IncomingMessage } from "node:http";
 import { describe, expect, it } from "vitest";
-import { clientIP, HttpError, readKey } from "./request.js";
+import { clientIP, HttpError, readKey, readToolset } from "./request.js";
 
 const req = (headers: Record<string, string>) => ({ headers }) as unknown as IncomingMessage;
 const url = (q = "") => new URL(`http://localhost/mcp${q}`);
@@ -34,5 +34,19 @@ describe("clientIP", () => {
   });
   it("drops values that are not IPs", () => {
     expect(clientIP(req({ "x-forwarded-for": "evil\r\nX: y" }), true)).toBeUndefined();
+  });
+});
+
+describe("readToolset", () => {
+  it("serves every tool without a toolset, or with all", () => {
+    expect(readToolset(url())).toBe("all");
+    expect(readToolset(url("?toolset=all"))).toBe("all");
+  });
+  it("reads data, also next to a key", () => {
+    expect(readToolset(url("?toolset=data"))).toBe("data");
+    expect(readToolset(url(`?key=${KEY}&toolset=Data`))).toBe("data");
+  });
+  it("rejects anything else instead of serving every tool", () => {
+    expect(() => readToolset(url("?toolset=dat"))).toThrow(HttpError);
   });
 });

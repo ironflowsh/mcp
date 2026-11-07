@@ -3,10 +3,11 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createServer, type ToolOutcome } from "./server.js";
 import { IronflowAPI } from "./api.js";
+import type { Toolset } from "./tools.js";
 
-async function connect(api: Partial<IronflowAPI>, outcomes: ToolOutcome[]): Promise<Client> {
+async function connect(api: Partial<IronflowAPI>, outcomes: ToolOutcome[], toolset?: Toolset): Promise<Client> {
   const stub = { notice: () => "", ...api, withContext: () => stub } as unknown as IronflowAPI;
-  const server = createServer(stub, "test", { onToolResult: (o) => outcomes.push(o) });
+  const server = createServer(stub, "test", { onToolResult: (o) => outcomes.push(o), toolset });
   const [a, b] = InMemoryTransport.createLinkedPair();
   await server.connect(a);
   const client = new Client({ name: "test", version: "1" });
@@ -36,11 +37,13 @@ describe("tool listing", () => {
   it("gives every tool a title and annotations that say what it changes", async () => {
     const client = await connect({}, []);
     const { tools } = await client.listTools();
-    expect(tools.length).toBe(46);
+    expect(tools.length).toBe(50);
     const writes: Record<string, { destructive: boolean; idempotent: boolean }> = {
       create_liquidation_alert: { destructive: false, idempotent: false },
       test_liquidation_alert: { destructive: false, idempotent: false },
       delete_liquidation_alert: { destructive: true, idempotent: true },
+      create_ironbox: { destructive: false, idempotent: false },
+      delete_ironbox: { destructive: true, idempotent: true },
     };
     for (const t of tools) {
       expect(t.title?.trim(), t.name).toBeTruthy();
@@ -56,6 +59,30 @@ describe("tool listing", () => {
         expect(t.annotations?.destructiveHint, t.name).not.toBe(true);
       }
     }
+  });
+});
+
+describe("toolsets", () => {
+  it("serves the Ironbox tools and their instruction by default", async () => {
+    const client = await connect({}, []);
+    const names = (await client.listTools()).tools.map((t) => t.name);
+    expect(names).toContain("create_ironbox");
+    expect(client.getInstructions()).toContain("spin up its own Ironbox with create_ironbox");
+  });
+
+  it("data hides the Ironbox tools and their instruction, and will not call them", async () => {
+    const outcomes: ToolOutcome[] = [];
+    const post = vi.fn();
+    const client = await connect({ post }, outcomes, "data");
+    const names = (await client.listTools()).tools.map((t) => t.name);
+    expect(names).toHaveLength(46);
+    expect(names.some((n) => n.includes("ironbox"))).toBe(false);
+    expect(names).toContain("create_liquidation_alert");
+    expect(client.getInstructions()).not.toContain("Ironbox");
+    const res = (await client.callTool({ name: "create_ironbox", arguments: {} })) as { isError?: boolean; content: { text: string }[] };
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toBe("Unknown tool: create_ironbox");
+    expect(post).not.toHaveBeenCalled();
   });
 });
 
@@ -123,6 +150,60 @@ describe("API notices in tool results", () => {
       structuredContent: Record<string, unknown>;
     };
     expect(res.structuredContent).toEqual({ market: "BTC-PERP", price: "100" });
+  });
+
+  it("create_ironbox posts to /v1/ironbox with the key and returns the new Ironbox", async () => {
+    const box = { id: "ibx_01JC7W2K", state: "creating", size: "small", mode: "paper", runtime: "python", region: "tokyo" };
+    const fetchMock = vi.fn(
+      async () => new Response(JSON.stringify(box), { status: 201, headers: { "content-type": "application/json" } })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const server = createServer(new IronflowAPI("http://api", "if_test"), "test");
+    const [a, b] = InMemoryTransport.createLinkedPair();
+    await server.connect(a);
+    const client = new Client({ name: "test", version: "1" });
+    await client.connect(b);
+    const res = (await client.callTool({ name: "create_ironbox", arguments: { markets: ["perps"] } })) as {
+      structuredContent: Record<string, unknown>;
+    };
+    expect(res.structuredContent).toEqual(box);
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("http://api/v1/ironbox");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body as string)).toEqual({ markets: ["perps"] });
+    expect((init.headers as Record<string, string>)["Authorization"]).toBe("Bearer if_test");
+  });
+
+  it("delete_ironbox returns the deleted Ironbox", async () => {
+    const client = await realClient(
+      () => new Response(JSON.stringify({ id: "ibx_01JC7W2K", state: "deleted" }), { headers: { "content-type": "application/json" } })
+    );
+    const res = (await client.callTool({ name: "delete_ironbox", arguments: { id: "ibx_01JC7W2K" } })) as {
+      structuredContent: Record<string, unknown>;
+    };
+    expect(res.structuredContent).toEqual({ id: "ibx_01JC7W2K", state: "deleted" });
+  });
+
+  it("without a key, the Ironbox tools return the API's free key guidance", async () => {
+    const message =
+      'Ironbox needs an API key. Get a free one at https://ironflow.sh/key, or POST https://api.ironflow.sh/v1/keys with {"email": "you@example.com"}';
+    const client = await realClient(
+      () =>
+        new Response(JSON.stringify({ error: { code: "KEY_REQUIRED", message } }), {
+          status: 401,
+          headers: { "content-type": "application/json" },
+        })
+    );
+    for (const [name, args] of [
+      ["create_ironbox", {}],
+      ["list_ironboxes", {}],
+      ["get_ironbox", { id: "ibx_01JC7W2K" }],
+      ["delete_ironbox", { id: "ibx_01JC7W2K" }],
+    ] as const) {
+      const res = (await client.callTool({ name, arguments: args })) as { isError?: boolean; content: { text: string }[] };
+      expect(res.isError, name).toBe(true);
+      expect(res.content[0].text, name).toBe(`Error: Ironflow API error 401 KEY_REQUIRED: ${message}`);
+    }
   });
 
   it("returns the API's error message, with its key link, as the tool error", async () => {

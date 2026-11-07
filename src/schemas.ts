@@ -65,7 +65,22 @@ const ALERT = {
   created_at: d("Creation time, RFC 3339"),
 };
 
-const PAGINATION = obj("Cursor pagination", {
+const IRONBOX = {
+  id: d("Ironbox id (ibx_...)"),
+  name: d("Name"),
+  state: d("creating, running, stopped, deleted or error"),
+  size: d("small, medium or large"),
+  mode: d("paper (simulated funds) or live"),
+  runtime: d("python or node"),
+  markets: d("Markets the agent trades: perps, outcomes, spot"),
+  region: d("Where it runs, e.g. tokyo"),
+  created_at: d("Creation time, Unix milliseconds"),
+  url: d("This Ironbox in the API"),
+  dashboard: d("Where the user manages it on ironflow.sh"),
+  message: d("What happens next, from the API"),
+};
+
+const PAGINATION =obj("Cursor pagination", {
   next_cursor: d("Pass as cursor to fetch the next page; null on the last page"),
   has_more: d("Whether more rows exist"),
 });
@@ -282,6 +297,10 @@ const toolSchemas: Record<string, Schema> = {
     error: d("The destination's answer when it was not delivered"),
   }),
   delete_liquidation_alert: obj("Deletion", { deleted: d("true"), id: d("The deleted alert's id") }),
+  create_ironbox: obj("The new Ironbox", IRONBOX),
+  list_ironboxes: obj("The account's Ironboxes", { data: arr("Ironboxes", obj("One Ironbox", IRONBOX)) }),
+  get_ironbox: obj("One Ironbox", IRONBOX),
+  delete_ironbox: obj("The deleted Ironbox, state deleted", IRONBOX),
   run_query: obj("Query result", {
     columns: arr("Column names in row order", d("Name")),
     column_types: arr("ClickHouse types in row order", d("Type")),
