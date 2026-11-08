@@ -37,13 +37,15 @@ describe("tool listing", () => {
   it("gives every tool a title and annotations that say what it changes", async () => {
     const client = await connect({}, []);
     const { tools } = await client.listTools();
-    expect(tools.length).toBe(50);
+    expect(tools.length).toBe(54);
     const writes: Record<string, { destructive: boolean; idempotent: boolean }> = {
       create_liquidation_alert: { destructive: false, idempotent: false },
       test_liquidation_alert: { destructive: false, idempotent: false },
       delete_liquidation_alert: { destructive: true, idempotent: true },
       create_ironbox: { destructive: false, idempotent: false },
       delete_ironbox: { destructive: true, idempotent: true },
+      start_box_strategy: { destructive: false, idempotent: false },
+      stop_box_strategy: { destructive: true, idempotent: true },
     };
     for (const t of tools) {
       expect(t.title?.trim(), t.name).toBeTruthy();

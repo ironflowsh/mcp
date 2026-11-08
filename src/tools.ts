@@ -112,6 +112,44 @@ function ironboxId(args: Record<string, unknown>): string {
   return id;
 }
 
+// boxSecret reads a paper box's URL or its bare secret and returns the secret,
+// so a tool can only ever reach /box/<secret> on the Ironflow API.
+function boxSecret(args: Record<string, unknown>): string {
+  const match = /(?:^|\/box\/)(ibxs_[0-9a-f]{64})(?:[/?#]|$)/.exec(requireString(args, "box").trim());
+  if (!match) {
+    throw new Error("box must be the box's base_url from create_ironbox, or its ibxs_ secret");
+  }
+  return match[1];
+}
+
+// strategyId reads a strategy id: hex after a fixed prefix, so it cannot reach
+// another path.
+function strategyId(args: Record<string, unknown>): string {
+  const id = requireString(args, "strategy_id").trim();
+  if (!/^strat_[0-9a-f]{16}$/.test(id)) {
+    throw new Error("strategy_id must be an id such as strat_9f2c4a7e1b3d5c60 (list_box_strategies lists them)");
+  }
+  return id;
+}
+
+// strategyBody copies the parameters the agent set, and nothing else, into
+// the strategy request. The engine refuses anything it does not know.
+const STRATEGY_FIELDS = [
+  "kind", "market", "side", "size_usd", "leverage", "max_loss_usd", "lower_px", "upper_px", "grids",
+  "lookback_bars", "exit_bars", "bar_seconds", "tranche_usd", "budget_usd", "dip_pct",
+  "interval_minutes", "take_profit_pct", "repeat",
+];
+
+function strategyBody(args: Record<string, unknown>): Record<string, unknown> {
+  const body: Record<string, unknown> = {};
+  for (const key of STRATEGY_FIELDS) {
+    if (args[key] !== undefined && args[key] !== "") body[key] = args[key];
+  }
+  return body;
+}
+
+const BOX_ARG = { type: "string", description: "The paper box: its base_url from create_ironbox, or the ibxs_ secret" };
+
 // ironboxMarkets reads markets as a list or a comma-separated string, as
 // agents send either, and gives the API a list.
 function ironboxMarkets(args: Record<string, unknown>): string[] | undefined {
@@ -458,7 +496,7 @@ export const tools: ToolDef[] = [
     name: "create_ironbox",
     title: "Spin up an Ironbox",
     description:
-      "Spin up an Ironbox: a secure sandbox next to Hyperliquid where an agent runs and trades, with Ironflow data, analytics, alerts and execution built in. No key needed for mode paper (the default): you get a trial box, the agent's own simulated Hyperliquid account for 24 hours, with base_url and expires_at. Point the Hyperliquid SDK's base_url at it. A free key keeps a box; mode live needs a paid plan. A live box stays creating until get_ironbox shows it running.",
+      "Spin up an Ironbox: a secure sandbox next to Hyperliquid where an agent runs and trades, with Ironflow data, analytics, alerts and execution built in. No key needed for mode paper (the default): you get a trial box, the agent's own simulated Hyperliquid account for 24 hours, with base_url and expires_at. It ends sooner after 2 hours with no requests and no strategy running. Point the Hyperliquid SDK's base_url at it, or start a strategy on it with start_box_strategy. A free key keeps a box; mode live needs a paid plan. A live box stays creating until get_ironbox shows it running.",
     inputSchema: {
       type: "object",
       properties: {
@@ -520,6 +558,88 @@ export const tools: ToolDef[] = [
     handler: async (args, api) => {
       const id = ironboxId(args);
       return JSON.stringify((await api.del(`/v1/ironbox/${id}`)) ?? { id, state: "deleted" }, null, 2);
+    },
+  },
+  {
+    name: "start_box_strategy",
+    title: "Start a strategy on a paper box",
+    description:
+      "Start a strategy on a Hyperliquid paper box: it runs around the clock with no client connected, in simulation only. No key needed, the box URL authorises it, so a trial box from create_ironbox works. kind is breakout (size_usd, lookback_bars, exit_bars, bar_seconds), grid (lower_px, upper_px, grids, size_usd) or dca (tranche_usd, budget_usd, dip_pct, interval_minutes, take_profit_pct, repeat). Every kind needs market and max_loss_usd: when the net loss reaches it, the strategy closes its position and stops. At most 3 per box, one per market. Follow it with get_box_activity.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        box: BOX_ARG,
+        kind: { type: "string", enum: ["breakout", "grid", "dca"], description: "Which strategy" },
+        market: { type: "string", description: "A live main perp, by display symbol or Hyperliquid name, e.g. BTC-PERP or BTC" },
+        max_loss_usd: { type: "number", description: "Net loss in USD that stops the strategy (required)" },
+        side: { type: "string", enum: ["long", "short", "both"], description: "breakout: long, short or both (default both). grid and dca: long (default) or short" },
+        size_usd: { type: "number", description: "breakout: notional of each entry. grid: total across the ladder, at least 10 a level" },
+        leverage: { type: "number", description: "Cross leverage on this market, default 3" },
+        lower_px: { type: "string", description: "grid: bottom of the ladder" },
+        upper_px: { type: "string", description: "grid: top of the ladder" },
+        grids: { type: "number", description: "grid: rungs, 2 to 25, default 10" },
+        lookback_bars: { type: "number", description: "breakout: entry channel, 5 to 120 bars, default 20" },
+        exit_bars: { type: "number", description: "breakout: exit channel, default half of lookback_bars" },
+        bar_seconds: { type: "number", description: "breakout: 60 (default), 300 or 900" },
+        tranche_usd: { type: "number", description: "dca: notional of each entry" },
+        budget_usd: { type: "number", description: "dca: total notional across the cycle" },
+        dip_pct: { type: "number", description: "dca: move against the last entry that buys the next tranche, default 3" },
+        interval_minutes: { type: "number", description: "dca: also buy a tranche after this long" },
+        take_profit_pct: { type: "number", description: "dca: close the stack at this gain on the average entry" },
+        repeat: { type: "boolean", description: "dca: start a new cycle after a take profit" },
+      },
+      required: ["box", "kind", "market", "max_loss_usd"],
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
+    handler: async (args, api) =>
+      JSON.stringify(await api.post(`/box/${boxSecret(args)}/strategies`, strategyBody(args)), null, 2),
+  },
+  {
+    name: "list_box_strategies",
+    title: "List a paper box's strategies",
+    description: "The strategies on a Hyperliquid paper box, running and recently stopped, each with its status, stop reason and result. Needs only the box URL.",
+    inputSchema: { type: "object", properties: { box: BOX_ARG }, required: ["box"] },
+    handler: async (args, api) => JSON.stringify(await api.get(`/box/${boxSecret(args)}/strategies`), null, 2),
+  },
+  {
+    name: "stop_box_strategy",
+    title: "Stop a strategy on a paper box",
+    description:
+      "Stop one strategy on a Hyperliquid paper box: its orders are cancelled and its position is closed at the book, unless close_position is false. The answer says stopping until the close fills, then list_box_strategies shows stopped. Needs only the box URL.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        box: BOX_ARG,
+        strategy_id: { type: "string", description: "strat_... from start_box_strategy or list_box_strategies" },
+        close_position: { type: "boolean", description: "false leaves its position open on the box; default true" },
+      },
+      required: ["box", "strategy_id"],
+    },
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
+    handler: async (args, api) => {
+      const query = args.close_position === false ? "?close_position=false" : "";
+      return JSON.stringify(await api.del(`/box/${boxSecret(args)}/strategies/${strategyId(args)}${query}`), null, 2);
+    },
+  },
+  {
+    name: "get_box_activity",
+    title: "Watch a paper box",
+    description:
+      "What a Hyperliquid paper box and its strategies really did: strategy started, decisions with their reasons, orders, fills, funding, stops, plus equity, PnL, fees and positions. Call it with no after for the latest events, then pass next_cursor as after. gap true means some events were missed. Needs only the box URL.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        box: BOX_ARG,
+        after: { type: "number", description: "next_cursor from the previous answer" },
+        limit: { type: "number", description: "Events to return, 1 to 200, default 100" },
+      },
+      required: ["box"],
+    },
+    handler: async (args, api) => {
+      const params: Record<string, string> = {};
+      if (args.after !== undefined) params.after = String(optionalNumber(args, "after", 0));
+      if (args.limit !== undefined) params.limit = String(optionalNumber(args, "limit", 100));
+      return JSON.stringify(await api.get(`/box/${boxSecret(args)}/activity`, params), null, 2);
     },
   },
 
@@ -1267,7 +1387,10 @@ export const tools: ToolDef[] = [
 // data tools only (mcp.ironflow.sh/mcp?toolset=data).
 export type Toolset = "all" | "data";
 
-export const IRONBOX_TOOLS = ["create_ironbox", "list_ironboxes", "get_ironbox", "delete_ironbox"];
+export const IRONBOX_TOOLS = [
+  "create_ironbox", "list_ironboxes", "get_ironbox", "delete_ironbox",
+  "start_box_strategy", "list_box_strategies", "stop_box_strategy", "get_box_activity",
+];
 
 export function toolsFor(toolset: Toolset = "all"): ToolDef[] {
   return toolset === "data" ? tools.filter((t) => !IRONBOX_TOOLS.includes(t.name)) : tools;

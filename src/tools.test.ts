@@ -29,15 +29,15 @@ function findTool(name: string) {
 // ─── Tool listing ─────────────────────────────────────────────────────────────
 
 describe("tools array", () => {
-  it("exports 50 tools", () => {
-    expect(tools).toHaveLength(50);
+  it("exports 54 tools", () => {
+    expect(tools).toHaveLength(54);
   });
 
-  it("the data toolset leaves out only the 4 Ironbox tools", () => {
+  it("the data toolset leaves out only the Ironbox tools", () => {
     expect(toolsFor()).toBe(tools);
     const data = toolsFor("data").map((t) => t.name);
     expect(data).toHaveLength(46);
-    expect(data.filter((n) => n.includes("ironbox"))).toEqual([]);
+    expect(data.filter((n) => n.includes("ironbox") || n.includes("box_"))).toEqual([]);
     expect(tools.filter((t) => !data.includes(t.name)).map((t) => t.name)).toEqual(IRONBOX_TOOLS);
   });
 
@@ -642,5 +642,45 @@ describe("get_outcome_markets", () => {
     const schema = outputSchemas.get_outcome_markets as { properties: Record<string, { items?: { properties: Record<string, unknown> } }> };
     for (const k of Object.keys(out)) expect(schema.properties).toHaveProperty(k);
     for (const k of Object.keys(out.top_markets[0])) expect(schema.properties.top_markets.items?.properties).toHaveProperty(k);
+  });
+});
+
+describe("paper box strategy tools", () => {
+  const secret = "ibxs_" + "ab".repeat(32);
+  const box = `https://api.ironflow.sh/box/${secret}`;
+
+  it("start_box_strategy sends only strategy fields, to the box URL", async () => {
+    const post = vi.fn().mockResolvedValue({ strategy: { id: "strat_1" }, paper: true });
+    await findTool("start_box_strategy").handler(
+      { box, kind: "dca", market: "BTC", tranche_usd: 100, budget_usd: 500, max_loss_usd: 50, script: "import os" },
+      mockApi({ post })
+    );
+    expect(post).toHaveBeenCalledWith(`/box/${secret}/strategies`, {
+      kind: "dca", market: "BTC", tranche_usd: 100, budget_usd: 500, max_loss_usd: 50,
+    });
+  });
+
+  it("takes the bare secret and refuses anything else", async () => {
+    const get = vi.fn().mockResolvedValue({ strategies: [] });
+    await findTool("list_box_strategies").handler({ box: secret }, mockApi({ get }));
+    expect(get).toHaveBeenCalledWith(`/box/${secret}/strategies`);
+    await expect(findTool("list_box_strategies").handler({ box: "https://evil.example/x" }, mockApi({ get }))).rejects.toThrow("box must be");
+    await expect(findTool("list_box_strategies").handler({ box: "ibxs_../../v1/keys" }, mockApi({ get }))).rejects.toThrow("box must be");
+  });
+
+  it("stop_box_strategy can leave the position and checks the id", async () => {
+    const del = vi.fn().mockResolvedValue({ strategy: { status: "stopped" } });
+    const strategy_id = "strat_9f2c4a7e1b3d5c60";
+    await findTool("stop_box_strategy").handler({ box, strategy_id, close_position: false }, mockApi({ del }));
+    expect(del).toHaveBeenCalledWith(`/box/${secret}/strategies/${strategy_id}?close_position=false`);
+    await findTool("stop_box_strategy").handler({ box, strategy_id }, mockApi({ del }));
+    expect(del).toHaveBeenLastCalledWith(`/box/${secret}/strategies/${strategy_id}`);
+    await expect(findTool("stop_box_strategy").handler({ box, strategy_id: "../x" }, mockApi({ del }))).rejects.toThrow("strategy_id");
+  });
+
+  it("get_box_activity passes the cursor", async () => {
+    const get = vi.fn().mockResolvedValue({ events: [], next_cursor: 9 });
+    await findTool("get_box_activity").handler({ box, after: 9, limit: 50 }, mockApi({ get }));
+    expect(get).toHaveBeenCalledWith(`/box/${secret}/activity`, { after: "9", limit: "50" });
   });
 });
