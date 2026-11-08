@@ -89,3 +89,29 @@ export function shapeUserFunding(resp: { data?: Row[] } & Row, limit = DEFAULT_F
   const data = rows.slice(0, limit);
   return { ...resp, total_rows: rows.length, returned: data.length, data };
 }
+
+// shapeOutcomeMarkets builds the get_outcome_markets result from the summary
+// endpoint, on traded figures. The endpoint's notional fields add up every
+// fill row (both sides of a trade, settlements, splits and merges) and its
+// last_price is the last fill of any kind, which reads 0.5 after a split or
+// merge. volume_usd, volume_24h and last_trade_price are the real ones. An
+// API without them (before its release) keeps the old ranking and prices.
+export function shapeOutcomeMarkets(data: Record<string, unknown>, limit: number): Record<string, unknown> {
+  const markets = Array.isArray(data.active_markets) ? (data.active_markets as Record<string, unknown>[]) : [];
+  const traded = markets.some((m) => m.volume_24h !== undefined);
+  const rank = (m: Record<string, unknown>) => Number((traded ? m.volume_24h : m.notional_24h) ?? 0);
+  const top = [...markets]
+    .sort((a, b) => rank(b) - rank(a))
+    .slice(0, limit)
+    .map((m) => (traded ? { ...m, last_price: Number(m.last_trade_ms ?? 0) > 0 ? m.last_trade_price : null } : m));
+  return {
+    window_hours: data.window_hours,
+    volume_usd: data.volume_usd,
+    notional_total: data.notional_total,
+    fills_total: data.fills_total,
+    wallets_total: data.wallets_total,
+    markets_active: data.markets_active,
+    computed_at: data.computed_at,
+    top_markets: top,
+  };
+}

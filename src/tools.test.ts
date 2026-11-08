@@ -575,3 +575,72 @@ describe("Ironbox tools", () => {
     expect(del).toHaveBeenCalledTimes(1);
   });
 });
+
+// ─── get_outcome_markets ──────────────────────────────────────────────────────
+
+describe("get_outcome_markets", () => {
+  const run = async (summary: Record<string, unknown>, args: Record<string, unknown> = {}) => {
+    const api = mockApi({ getOutcomeMarkets: vi.fn().mockResolvedValue(summary) });
+    return JSON.parse(await findTool("get_outcome_markets").handler(args, api));
+  };
+
+  it("ranks by traded volume and returns the last trade as the price", async () => {
+    const out = await run({
+      window_hours: 24,
+      volume_usd: 7971888,
+      notional_total: 16418714,
+      active_markets: [
+        { market_id: 2, notional_24h: 900, volume_24h: 100, last_price: 0.5, last_trade_price: 0.22, last_trade_ms: 1000 },
+        { market_id: 4, notional_24h: 300, volume_24h: 250, last_price: 0.5, last_trade_price: 0.84, last_trade_ms: 2000 },
+      ],
+    });
+    expect(out.volume_usd).toBe(7971888);
+    expect(out.notional_total).toBe(16418714);
+    expect(out.top_markets.map((m: { market_id: number }) => m.market_id)).toEqual([4, 2]);
+    expect(out.top_markets[0].last_price).toBe(0.84);
+    expect(out.top_markets[1].last_price).toBe(0.22);
+  });
+
+  it("reports no price for a side with only splits and merges in 24 hours", async () => {
+    const out = await run({
+      active_markets: [{ market_id: 2, notional_24h: 50, volume_24h: 0, last_price: 0.5, last_trade_price: 0, last_trade_ms: 0 }],
+    });
+    expect(out.top_markets[0].last_price).toBeNull();
+  });
+
+  it("keeps the old ranking and price while the API has no traded fields", async () => {
+    const out = await run({
+      notional_total: 500,
+      active_markets: [
+        { market_id: 2, notional_24h: 100, last_price: 0.3 },
+        { market_id: 4, notional_24h: 400, last_price: 0.6 },
+      ],
+    });
+    expect(out.volume_usd).toBeUndefined();
+    expect(out.notional_total).toBe(500);
+    expect(out.top_markets.map((m: { market_id: number }) => m.market_id)).toEqual([4, 2]);
+    expect(out.top_markets[0].last_price).toBe(0.6);
+  });
+
+  it("applies the limit and copes with no markets", async () => {
+    const rows = [1, 2, 3].map((i) => ({ market_id: i * 2, volume_24h: i, last_trade_price: 0.5, last_trade_ms: 1 }));
+    expect((await run({ active_markets: rows }, { limit: 2 })).top_markets).toHaveLength(2);
+    expect((await run({})).top_markets).toEqual([]);
+  });
+
+  it("describes every field it returns", async () => {
+    const out = await run({
+      window_hours: 24,
+      volume_usd: 1,
+      notional_total: 2,
+      fills_total: 3,
+      wallets_total: 4,
+      markets_active: 5,
+      computed_at: 6,
+      active_markets: [{ market_id: 2, display_symbol: "A", hl_coin: "#1", last_fill_ms: 1, fills_24h: 1, notional_24h: 1, volume_24h: 1, last_price: 0.5, last_trade_price: 0.4, last_trade_ms: 1 }],
+    });
+    const schema = outputSchemas.get_outcome_markets as { properties: Record<string, { items?: { properties: Record<string, unknown> } }> };
+    for (const k of Object.keys(out)) expect(schema.properties).toHaveProperty(k);
+    for (const k of Object.keys(out.top_markets[0])) expect(schema.properties.top_markets.items?.properties).toHaveProperty(k);
+  });
+});
