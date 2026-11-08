@@ -78,6 +78,12 @@ const IRONBOX = {
   url: d("This Ironbox in the API"),
   dashboard: d("Where the user manages it on ironflow.sh"),
   message: d("What happens next, from the API"),
+  paper: d("True on a paper box: the agent's own simulated Hyperliquid account"),
+  base_url: d("Set the Hyperliquid SDK's base_url to this. Shown only when a paper box is created or rotated"),
+  snippet: d("A first Python program for this box. Shown only when created or rotated"),
+  starting_balance_usd: d("Starting balance of a new paper box"),
+  trial: d("True on a keyless trial box"),
+  expires_at: d("When a trial box ends and is removed, Unix milliseconds"),
 };
 
 const PAGINATION =obj("Cursor pagination", {

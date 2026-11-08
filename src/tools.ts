@@ -458,7 +458,7 @@ export const tools: ToolDef[] = [
     name: "create_ironbox",
     title: "Spin up an Ironbox",
     description:
-      "Spin up an Ironbox: a secure sandbox next to Hyperliquid where an agent runs and trades, with Ironflow data, analytics, alerts and execution built in. Needs an API key (a free key works). It starts in state creating; get_ironbox shows when it is running.",
+      "Spin up an Ironbox: a secure sandbox next to Hyperliquid where an agent runs and trades, with Ironflow data, analytics, alerts and execution built in. No key needed for mode paper (the default): you get a trial box, the agent's own simulated Hyperliquid account for 24 hours, with base_url and expires_at. Point the Hyperliquid SDK's base_url at it. A free key keeps a box; mode live needs a paid plan. A live box stays creating until get_ironbox shows it running.",
     inputSchema: {
       type: "object",
       properties: {

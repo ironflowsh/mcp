@@ -184,7 +184,39 @@ describe("API notices in tool results", () => {
     expect(res.structuredContent).toEqual({ id: "ibx_01JC7W2K", state: "deleted" });
   });
 
-  it("without a key, the Ironbox tools return the API's free key guidance", async () => {
+  it("create_ironbox works with no key: it posts without Authorization and returns the trial box", async () => {
+    const trial = {
+      id: "ibx_3f9a0c7e12d4",
+      state: "running",
+      mode: "paper",
+      paper: true,
+      trial: true,
+      base_url: "https://api.ironflow.sh/box/ibxs_test",
+      expires_at: 1762606400000,
+      message: "Trial paper box, removed after 24 hours. A free key keeps a box: https://ironflow.sh/key?utm_source=api",
+    };
+    const fetchMock = vi.fn(
+      async () => new Response(JSON.stringify(trial), { status: 201, headers: { "content-type": "application/json" } })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const server = createServer(new IronflowAPI("http://api"), "test");
+    const [a, b] = InMemoryTransport.createLinkedPair();
+    await server.connect(a);
+    const client = new Client({ name: "test", version: "1" });
+    await client.connect(b);
+    const res = (await client.callTool({ name: "create_ironbox", arguments: {} })) as {
+      isError?: boolean;
+      structuredContent: Record<string, unknown>;
+    };
+    expect(res.isError).toBeFalsy();
+    expect(res.structuredContent).toEqual(trial);
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("http://api/v1/ironbox");
+    expect(init.method).toBe("POST");
+    expect((init.headers as Record<string, string>)["Authorization"]).toBeUndefined();
+  });
+
+  it("without a key, the other Ironbox tools return the API's free key guidance", async () => {
     const message =
       'Ironbox needs an API key. Get a free one at https://ironflow.sh/key, or POST https://api.ironflow.sh/v1/keys with {"email": "you@example.com"}';
     const client = await realClient(
@@ -195,7 +227,6 @@ describe("API notices in tool results", () => {
         })
     );
     for (const [name, args] of [
-      ["create_ironbox", {}],
       ["list_ironboxes", {}],
       ["get_ironbox", { id: "ibx_01JC7W2K" }],
       ["delete_ironbox", { id: "ibx_01JC7W2K" }],
