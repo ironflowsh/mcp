@@ -216,19 +216,23 @@ const toolSchemas: Record<string, Schema> = {
 
   get_outcome_markets: obj("HIP-4 outcome markets overview", {
     window_hours: d("Window of the totals, in hours"),
-    notional_total: d("Volume in USD over the window"),
-    fills_total: d("Fills over the window"),
-    wallets_total: d("Wallets that traded over the window"),
-    markets_active: d("Outcome markets listed now"),
+    volume_usd: d("Traded volume in USD over the window, each trade counted once"),
+    notional_total: d("Not traded volume: USD over every fill row, both sides of each trade plus settlements, splits and merges. Use volume_usd"),
+    fills_total: d("Fill rows over the window, both sides of each trade plus settlements, splits and merges"),
+    wallets_total: d("Wallets with any fill over the window, including wallets that only settled, split or merged"),
+    markets_active: d("Outcome sides with a fill in the window"),
     computed_at: d("When the summary was computed, Unix seconds"),
-    top_markets: arr("Most traded outcomes, highest 24h volume first", obj("One outcome side", {
+    top_markets: arr("Most traded outcome sides, highest 24h traded volume first", obj("One outcome side", {
       market_id: d("Ironflow market id"),
       display_symbol: d('Outcome symbol, e.g. "BTC-77719-20261105-Yes"'),
       hl_coin: d('Hyperliquid coin, e.g. "#14730"'),
-      last_price: d("Last traded price, the implied probability (0 to 1)"),
-      last_fill_ms: d("Last fill, Unix milliseconds"),
-      fills_24h: d("Fills in the last 24 hours"),
-      notional_24h: d("Volume in USD in the last 24 hours"),
+      last_price: d("Last traded price, the implied probability (0 to 1); null when this side had no trade in 24 hours"),
+      last_trade_price: d("Same as last_price, 0 when this side had no trade in 24 hours"),
+      last_trade_ms: F.last_trade_ms,
+      last_fill_ms: d("Last fill of any kind, Unix milliseconds"),
+      fills_24h: d("Fill rows in the last 24 hours"),
+      volume_24h: d("Traded volume in USD on this side in the last 24 hours, each trade once. The two sides of an outcome share one book: add both for the outcome's volume"),
+      notional_24h: d("Not traded volume: USD over every fill row of this side in 24 hours. Use volume_24h"),
     })),
   }),
 

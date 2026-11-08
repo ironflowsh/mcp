@@ -14,7 +14,7 @@ import {
   VAULT_LEADERBOARD_DAYS,
   vaultLeaderboardSQL,
 } from "./query.js";
-import { DEFAULT_FUNDING_ROWS, DEFAULT_MARKETS_LIMIT, MAX_MARKETS_LIMIT, shapeMarkets, shapeUserFunding, shapeWalletLabels } from "./shape.js";
+import { DEFAULT_FUNDING_ROWS, DEFAULT_MARKETS_LIMIT, MAX_MARKETS_LIMIT, shapeMarkets, shapeOutcomeMarkets, shapeUserFunding, shapeWalletLabels } from "./shape.js";
 
 // Tool definition type (used for listing and calling). title is the short
 // human name clients show (and the Claude directory requires).
@@ -319,7 +319,7 @@ export const tools: ToolDef[] = [
     name: "get_outcome_markets",
     title: "HIP-4 outcome markets overview",
     description:
-      "Hyperliquid HIP-4 outcome markets (prediction markets on sports, central bank decisions, IPOs and daily BTC price contracts) over the last 4 hours, 1 day or 1 week: total volume, fills, wallets and active markets, plus the most traded outcomes with their last price (the implied probability, 0 to 1) and last-24-hour volume. Each outcome has a Yes and a No side whose prices sum to 1. For one outcome's trades or candles pass its symbol to get_recent_trades or get_candles; settled outcomes stay queryable. For per-wallet outcome activity use run_query on hl.wallet_daily with market_class = 'prediction'.",
+      "Hyperliquid HIP-4 outcome markets (prediction markets on sports, central bank decisions, IPOs and daily BTC price contracts) over the last 4 hours, 1 day or 1 week: traded volume (each trade counted once), fills, wallets and active markets, plus the most traded outcomes with their last traded price (the implied probability, 0 to 1) and last-24-hour traded volume. Each outcome has a Yes and a No side whose prices sum to 1. For one outcome's trades or candles pass its symbol to get_recent_trades or get_candles; settled outcomes stay queryable. For per-wallet outcome activity use run_query on hl.wallet_daily with market_class = 'prediction'.",
     inputSchema: {
       type: "object",
       properties: {
@@ -332,23 +332,7 @@ export const tools: ToolDef[] = [
       const window = optionalString(args, "window", "1d");
       const limit = Math.min(Math.max(optionalNumber(args, "limit", 20), 1), 200);
       const data = (await api.getOutcomeMarkets(window)) as Record<string, unknown>;
-      const markets = Array.isArray(data.active_markets) ? (data.active_markets as Record<string, unknown>[]) : [];
-      const top = [...markets]
-        .sort((a, b) => Number(b.notional_24h ?? 0) - Number(a.notional_24h ?? 0))
-        .slice(0, limit);
-      return JSON.stringify(
-        {
-          window_hours: data.window_hours,
-          notional_total: data.notional_total,
-          fills_total: data.fills_total,
-          wallets_total: data.wallets_total,
-          markets_active: data.markets_active,
-          computed_at: data.computed_at,
-          top_markets: top,
-        },
-        null,
-        2,
-      );
+      return JSON.stringify(shapeOutcomeMarkets(data, limit), null, 2);
     },
   },
   {
