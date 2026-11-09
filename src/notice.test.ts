@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { attachNotice, enumNotice, formatNotices, readNotice } from "./notice.js";
 
 const KEYLESS_NOTICE =
-  "keyless access reaches 24 hours back, so data starts at X-Ironflow-History-Clamped. A free key reaches 30 days: https://ironflow.sh/key";
+  "keyless access reaches 24 hours back, so data starts at X-Ironflow-History-Clamped. A free key reaches 14 days: https://ironflow.sh/key";
 
 describe("readNotice", () => {
   it("reads the three notice headers", () => {
@@ -34,7 +34,7 @@ describe("formatNotices", () => {
   it("writes the clamp time into the API's notice, which names a header the agent never sees", () => {
     const text = formatNotices([{ historyClampedMs: 1793232000000, notice: KEYLESS_NOTICE }]);
     expect(text).toBe(
-      "Keyless access reaches 24 hours back, so data starts at 2026-10-29T00:00:00Z (1793232000000). A free key reaches 30 days: https://ironflow.sh/key"
+      "Keyless access reaches 24 hours back, so data starts at 2026-10-29T00:00:00Z (1793232000000). A free key reaches 14 days: https://ironflow.sh/key"
     );
     expect(text).not.toContain("X-Ironflow");
   });
