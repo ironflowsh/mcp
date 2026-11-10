@@ -37,6 +37,24 @@ export function clientFromInitialize(body: unknown): string {
   return "";
 }
 
+// SessionRPC is an MCP method that never reaches the API on its own, so the
+// hosted server reports it (IronflowAPI.noteRPC): a client opening a session
+// or reading the tool list.
+export type SessionRPC = "initialize" | "tools/list";
+
+const SESSION_RPCS: readonly SessionRPC[] = ["initialize", "tools/list"];
+
+// sessionRPCs returns the initialize and tools/list calls in a request body
+// (one message or a batch), each once.
+export function sessionRPCs(body: unknown): SessionRPC[] {
+  const found = new Set<SessionRPC>();
+  for (const m of messages(body)) {
+    const rpc = SESSION_RPCS.find((r) => r === m?.method);
+    if (rpc) found.add(rpc);
+  }
+  return [...found];
+}
+
 // callerHash is a keyed hash of the caller's IP, so the log can count
 // distinct callers without storing addresses. The API uses the same salt and
 // algorithm, so a caller hashes the same in both logs.

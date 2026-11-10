@@ -1,7 +1,7 @@
 // Ironflow REST API client. Uses native fetch — no external HTTP dependencies.
 
 import { type ApiNotice, formatNotices, readNotice } from "./notice.js";
-import { sanitizeClientApp } from "./usage.js";
+import { sanitizeClientApp, type SessionRPC } from "./usage.js";
 
 const DEFAULT_BASE_URL = "https://api.ironflow.sh";
 const DEFAULT_SOURCE = "hyperliquid";
@@ -16,6 +16,8 @@ export interface CallContext {
 }
 
 const TOOL_PATTERN = /^[a-z0-9_]{1,48}$/;
+const NOTE_TIMEOUT_MS = 2000;
+const TOOLSET_PATTERN = /^[a-z]{1,16}$/;
 const ERROR_CODE_PATTERN = /^[A-Z0-9_]{1,48}$/;
 const MAX_NOTICES = 20;
 
@@ -86,6 +88,28 @@ export class IronflowAPI {
       h["X-Ironflow-Tool"] = this.context.tool;
     }
     return h;
+  }
+
+  // noteRPC tells the API's request log about an initialize or tools/list
+  // call, which never reach the API on their own, so sessions and the apps
+  // that open them are counted next to tool calls (POST /v1/mcp/events; the
+  // API accepts it only from inside Ironflow's network, so only the hosted
+  // server calls this). The key is not sent, only whether there was one. It
+  // never throws: a lost note costs nothing but a count.
+  async noteRPC(rpc: SessionRPC, keyed: boolean, toolset?: string): Promise<void> {
+    const url = new URL("/v1/mcp/events", this.baseUrl);
+    url.searchParams.set("rpc", rpc);
+    url.searchParams.set("keyed", String(keyed));
+    if (toolset && TOOLSET_PATTERN.test(toolset)) url.searchParams.set("toolset", toolset);
+    const headers = this.headers();
+    delete headers["Authorization"];
+    delete headers["X-Ironflow-Tool"];
+    try {
+      const res = await fetch(url.toString(), { method: "POST", headers, signal: AbortSignal.timeout(NOTE_TIMEOUT_MS) });
+      await res.body?.cancel();
+    } catch {
+      // The API is down or slow: the MCP request itself is unaffected.
+    }
   }
 
   // hasKey reports whether requests carry an API key.
