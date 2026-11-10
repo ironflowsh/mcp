@@ -177,3 +177,25 @@ describe("IronflowAPI latest rows", () => {
     }
   });
 });
+
+describe("IronflowAPI.noteRPC", () => {
+  it("reports a session call with the client app, never the key", async () => {
+    const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const api = new IronflowAPI("http://api", "if_secret", undefined, "0.17.2-hosted", "203.0.113.9").withContext({ client: "claude-ai/0.1.0" });
+    await api.noteRPC("tools/list", true, "data");
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const headers = init.headers as Record<string, string>;
+    expect(url).toBe("http://api/v1/mcp/events?rpc=tools%2Flist&keyed=true&toolset=data");
+    expect(init.method).toBe("POST");
+    expect(headers["X-Ironflow-Client"]).toBe("claude-ai/0.1.0");
+    expect(headers["User-Agent"]).toBe("ironflow-mcp/0.17.2-hosted");
+    expect(headers["X-Forwarded-For"]).toBe("203.0.113.9");
+    expect(headers["Authorization"]).toBeUndefined();
+  });
+
+  it("never throws when the API is unreachable", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => Promise.reject(new Error("ECONNREFUSED"))));
+    await expect(new IronflowAPI("http://api").noteRPC("initialize", false)).resolves.toBeUndefined();
+  });
+});

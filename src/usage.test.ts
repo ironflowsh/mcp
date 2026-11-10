@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { callerHash, ClientMemory, clientFromInitialize, sanitizeClientApp, summarizeArgs, toolLogFields } from "./usage.js";
+import {
+  callerHash,
+  ClientMemory,
+  clientFromInitialize,
+  sanitizeClientApp,
+  sessionRPCs,
+  summarizeArgs,
+  toolLogFields,
+} from "./usage.js";
 
 describe("sanitizeClientApp", () => {
   it("keeps plain app names", () => {
@@ -111,5 +119,24 @@ describe("ClientMemory", () => {
     m.remember("abc", "", 0);
     expect(m.recall("", 0)).toBe("");
     expect(m.recall("abc", 0)).toBe("");
+  });
+});
+
+describe("sessionRPCs", () => {
+  it("finds initialize and tools/list, each once, in a message or a batch", () => {
+    expect(sessionRPCs({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} })).toEqual(["initialize"]);
+    expect(
+      sessionRPCs([
+        { method: "notifications/initialized" },
+        { method: "tools/list" },
+        { method: "tools/list" },
+        { method: "tools/call", params: { name: "get_price" } },
+      ])
+    ).toEqual(["tools/list"]);
+  });
+  it("is empty for tool calls and junk", () => {
+    expect(sessionRPCs({ method: "tools/call" })).toEqual([]);
+    expect(sessionRPCs(null)).toEqual([]);
+    expect(sessionRPCs([null, 3, "x"])).toEqual([]);
   });
 });

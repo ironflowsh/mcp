@@ -28,7 +28,15 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { IronflowAPI } from "./api.js";
 import { clientIP, HttpError, readKey, readToolset } from "./request.js";
 import { createServer, packageVersion, type ToolOutcome } from "./server.js";
-import { callerHash, ClientMemory, clientFromInitialize, sanitizeClientApp, summarizeArgs, toolLogFields } from "./usage.js";
+import {
+  callerHash,
+  ClientMemory,
+  clientFromInitialize,
+  sanitizeClientApp,
+  sessionRPCs,
+  summarizeArgs,
+  toolLogFields,
+} from "./usage.js";
 
 const DEFAULT_PORT = 8080;
 const MAX_BODY_BYTES = 1024 * 1024;
@@ -104,6 +112,12 @@ async function handleMCP(req: IncomingMessage, res: ServerResponse, url: URL): P
   if (initClient) clients.remember(caller, initClient);
   const recalled = initClient ? "" : clients.recall(caller);
   const api = new IronflowAPI(apiUrl, key, undefined, `${version}-hosted`, ip);
+  // initialize and tools/list never call the API, so the API's request log
+  // would not see them; report each (fire and forget) with the client app.
+  const client = initClient || recalled || userAgent;
+  for (const rpc of sessionRPCs(body)) {
+    void api.withContext({ client }).noteRPC(rpc, Boolean(key), toolset === "all" ? undefined : toolset);
+  }
   const outcomes: ToolOutcome[] = [];
   const server = createServer(api, version, {
     fallbackClient: recalled || userAgent,
