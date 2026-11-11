@@ -25,6 +25,12 @@ export function sanitizeClientApp(value: string | undefined): string {
   return v.slice(0, MAX_CLIENT_APP_LEN);
 }
 
+// isQACheck reports whether a User-Agent marks one of our own live checks
+// (qa_check anywhere in it, as the API's own rule).
+export function isQACheck(userAgent: string | string[] | undefined): boolean {
+  return /qa_check/i.test(Array.isArray(userAgent) ? userAgent.join(" ") : userAgent ?? "");
+}
+
 // clientFromInitialize returns "name/version" from an initialize request's
 // clientInfo, or "" when the body holds no initialize.
 export function clientFromInitialize(body: unknown): string {
