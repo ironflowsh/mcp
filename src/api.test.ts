@@ -194,6 +194,18 @@ describe("IronflowAPI.noteRPC", () => {
     expect(headers["Authorization"]).toBeUndefined();
   });
 
+  it("tags our own checks with utm_source=qa_check, which the API leaves out of mcp_request", async () => {
+    const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const api = new IronflowAPI("http://api").withContext({ client: "claude-code/2.1.322" });
+    await api.noteRPC("initialize", false, undefined, true);
+    await api.noteRPC("initialize", false);
+    const [qa] = fetchMock.mock.calls[0] as unknown as [string];
+    const [outside] = fetchMock.mock.calls[1] as unknown as [string];
+    expect(qa).toBe("http://api/v1/mcp/events?rpc=initialize&keyed=false&utm_source=qa_check");
+    expect(outside).toBe("http://api/v1/mcp/events?rpc=initialize&keyed=false");
+  });
+
   it("never throws when the API is unreachable", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => Promise.reject(new Error("ECONNREFUSED"))));
     await expect(new IronflowAPI("http://api").noteRPC("initialize", false)).resolves.toBeUndefined();

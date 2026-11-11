@@ -32,6 +32,7 @@ import {
   callerHash,
   ClientMemory,
   clientFromInitialize,
+  isQACheck,
   sanitizeClientApp,
   sessionRPCs,
   summarizeArgs,
@@ -114,9 +115,12 @@ async function handleMCP(req: IncomingMessage, res: ServerResponse, url: URL): P
   const api = new IronflowAPI(apiUrl, key, undefined, `${version}-hosted`, ip);
   // initialize and tools/list never call the API, so the API's request log
   // would not see them; report each (fire and forget) with the client app.
+  // The client app replaces the User-Agent, so a qa_check User-Agent is
+  // passed on separately: our own checks stay out of mcp_request.
   const client = initClient || recalled || userAgent;
+  const qaCheck = isQACheck(req.headers["user-agent"]);
   for (const rpc of sessionRPCs(body)) {
-    void api.withContext({ client }).noteRPC(rpc, Boolean(key), toolset === "all" ? undefined : toolset);
+    void api.withContext({ client }).noteRPC(rpc, Boolean(key), toolset === "all" ? undefined : toolset, qaCheck);
   }
   const outcomes: ToolOutcome[] = [];
   const server = createServer(api, version, {

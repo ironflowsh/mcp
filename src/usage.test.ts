@@ -7,7 +7,18 @@ import {
   sessionRPCs,
   summarizeArgs,
   toolLogFields,
+  isQACheck,
 } from "./usage.js";
+
+describe("isQACheck", () => {
+  it("finds qa_check anywhere in the User-Agent", () => {
+    expect(isQACheck("Mozilla/5.0 qa_check")).toBe(true);
+    expect(isQACheck("QA_CHECK-mcp/1")).toBe(true);
+    expect(isQACheck(["curl/8", "qa_check"])).toBe(true);
+    expect(isQACheck("claude-code/2.1.322")).toBe(false);
+    expect(isQACheck(undefined)).toBe(false);
+  });
+});
 
 describe("sanitizeClientApp", () => {
   it("keeps plain app names", () => {

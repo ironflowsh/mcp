@@ -95,12 +95,15 @@ export class IronflowAPI {
   // that open them are counted next to tool calls (POST /v1/mcp/events; the
   // API accepts it only from inside Ironflow's network, so only the hosted
   // server calls this). The key is not sent, only whether there was one. It
-  // never throws: a lost note costs nothing but a count.
-  async noteRPC(rpc: SessionRPC, keyed: boolean, toolset?: string): Promise<void> {
+  // never throws: a lost note costs nothing but a count. qaCheck marks our
+  // own live checks (a qa_check User-Agent with any client name) with
+  // utm_source=qa_check, which the API leaves out of mcp_request.
+  async noteRPC(rpc: SessionRPC, keyed: boolean, toolset?: string, qaCheck = false): Promise<void> {
     const url = new URL("/v1/mcp/events", this.baseUrl);
     url.searchParams.set("rpc", rpc);
     url.searchParams.set("keyed", String(keyed));
     if (toolset && TOOLSET_PATTERN.test(toolset)) url.searchParams.set("toolset", toolset);
+    if (qaCheck) url.searchParams.set("utm_source", "qa_check");
     const headers = this.headers();
     delete headers["Authorization"];
     delete headers["X-Ironflow-Tool"];
