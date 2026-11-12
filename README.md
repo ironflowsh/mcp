@@ -1,10 +1,14 @@
 # @ironflowsh/mcp
 
-MCP server for [Ironflow](https://ironflow.sh), the agent cloud for Hyperliquid: market data, wallet analytics and liquidation alerts for Claude, Cursor and any MCP client. It covers native perps, HIP-3 builder markets, HIP-4 outcome markets and spot. 50 tools: 42 read data, including `run_query` for read-only SQL over every Hyperliquid fill, wallet, funding and liquidation table, 4 manage liquidation alerts that Ironflow posts to your Discord, Slack, Telegram or webhook, and 4 spin up and manage Ironboxes.
+MCP server for [Ironflow](https://ironflow.sh), the agent cloud for Hyperliquid. It gives Claude, Cursor and any MCP client Hyperliquid market data, wallet analytics, liquidation alerts and Ironbox sandboxes. It covers native perps, HIP-3 builder markets, HIP-4 outcome markets and spot, with every fill since 25 May 2025.
 
-To run your agent next to Hyperliquid, spin up an [Ironbox](https://ironflow.sh/ironbox): a secure sandbox with this data built in.
+54 tools:
 
-No API key needed to start: keyless calls get 30 requests per minute, 300 per day and 24 hours of history. A free key from [ironflow.sh/key](https://ironflow.sh/key) raises that to 60 requests per minute and 14 days. Agents with a USDC wallet on Base can also pay per call with x402, from $0.001 and with no key ([pay per call](https://docs.ironflow.sh/guides/pay-per-call)).
+- 42 read data, including `run_query` for read-only SQL over every fill, wallet, funding and liquidation table.
+- 4 manage liquidation alerts that Ironflow posts to your Discord, Slack, Telegram or webhook.
+- 8 run [Ironbox](https://ironflow.sh/ironbox), a cloud sandbox for trading agents next to Hyperliquid. Test a Hyperliquid trading bot on a paper account with 10,000 USD and live prices, or run breakout, grid and DCA strategies on it. A paper box never places a real order.
+
+No API key needed to start: keyless calls get 30 requests per minute, 300 per day and 24 hours of history. A free key from [ironflow.sh/key](https://ironflow.sh/key) gives 60 requests per minute and 14 days. Agents with a USDC wallet on Base can also pay per call with x402, from $0.001 and with no key ([pay per call](https://docs.ironflow.sh/guides/pay-per-call)).
 
 ## Install
 
@@ -92,9 +96,9 @@ To host the HTTP server yourself: `npx -y -p @ironflowsh/mcp ironflow-mcp-http` 
 
 **Liquidation alerts** (need an API key; a free key allows one): `create_liquidation_alert` has Ironflow post matching liquidations to a Discord channel, Slack channel, Telegram chat or HTTPS webhook within seconds, filtered by market, side, size and wallet, and keeps posting after the conversation ends; `list_liquidation_alerts`, `test_liquidation_alert` and `delete_liquidation_alert` manage them. Guide: [docs.ironflow.sh/guides/liquidation-alerts](https://docs.ironflow.sh/guides/liquidation-alerts).
 
-**Ironbox**: `create_ironbox` spins up a secure sandbox next to Hyperliquid for an agent to run and trade in. With no key it makes a 24-hour trial paper box; a free key keeps a box. `start_box_strategy`, `list_box_strategies`, `stop_box_strategy` and `get_box_activity` run breakout, grid and DCA strategies on a paper box with no client connected, and need only its URL. `get_ironbox` and `delete_ironbox` need a key, and so does mode live (a paid plan); `list_ironboxes` without a key says how to make a trial box. Called without a key, a tool that needs one answers with the free key link instead of calling the API. `https://mcp.ironflow.sh/mcp?toolset=data` serves every tool except these.
+**Ironbox**: `create_ironbox` spins up a secure sandbox next to Hyperliquid where an agent trades on paper. With no key it makes a 24-hour trial paper box; a free key keeps a box. `start_box_strategy`, `list_box_strategies`, `stop_box_strategy` and `get_box_activity` run breakout, grid and DCA strategies on a paper box with no client connected, and need only its URL. `get_ironbox` and `delete_ironbox` need a key; `list_ironboxes` without a key says how to make a trial box. Called without a key, a tool that needs one answers with the free key link instead of calling the API. `https://mcp.ironflow.sh/mcp?toolset=data` serves every tool except these.
 
-Markets can be given as display symbols (`BTC-PERP`, `xyz:NVDA-PERP`, `HYPE/USDC`) or Hyperliquid names (`BTC`, `@107`, `xyz:NVDA`), and times as Unix ms, Unix seconds, ISO 8601 or relative to now (`-7d`, `-24h`, `now`). When the API reads a name, or serves a window that starts later than asked because of the key's history limit, the result starts with a `notice` saying so. Fill history covers a rolling 12 months. There is no order book, order status or streaming tool; for live feeds the REST API has `/v1/liquidations/stream` and `/v1/trades/stream` (Server-Sent Events).
+Markets can be given as display symbols (`BTC-PERP`, `xyz:NVDA-PERP`, `HYPE/USDC`) or Hyperliquid names (`BTC`, `@107`, `xyz:NVDA`), and times as Unix ms, Unix seconds, ISO 8601 or relative to now (`-7d`, `-24h`, `now`). When the API reads a name, or serves a window that starts later than asked because of the key's history limit, the result starts with a `notice` saying so. Fill history starts on 25 May 2025. There is no order book, order status or streaming tool; for live feeds the REST API has `/v1/liquidations/stream` and `/v1/trades/stream` (Server-Sent Events).
 
 ## Configuration
 
