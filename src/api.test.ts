@@ -113,6 +113,32 @@ describe("IronflowAPI notices", () => {
       "Ironflow API error 429 KEYLESS_DAILY_LIMIT: keyless access allows 500 requests per day from one IP: https://ironflow.sh/key (per IP) Retry after 3600 s."
     );
   });
+  // Agents guessed 7 spellings of gold (XAU, XAUT, GOLD, xyz:XAU-PERP, ...)
+  // and PEPE-PERP for kPEPE-PERP on the liquidation map in the week to
+  // 2026-11-12; the API names the markets they meant in did_you_mean.
+  it("names the API's did_you_mean markets when the message does not", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        json({ error: { code: "NOT_FOUND", message: 'no liquidation map for "XAU"', did_you_mean: ["xyz:GOLD-PERP", "PAXG-PERP"] } }, { status: 404 })
+      )
+    );
+    const api = new IronflowAPI("http://api").withContext({});
+    await expect(api.get("/v1/liquidations/map", { market: "XAU" })).rejects.toThrow(
+      'Ironflow API error 404 NOT_FOUND: no liquidation map for "XAU". Did you mean xyz:GOLD-PERP or PAXG-PERP?'
+    );
+  });
+
+  it("does not repeat did_you_mean markets the message already names", async () => {
+    const message = 'no liquidation map for "PEPE-PERP". Did you mean kPEPE-PERP?';
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(json({ error: { code: "NOT_FOUND", message, did_you_mean: ["kPEPE-PERP"] } }, { status: 404 }))
+    );
+    const api = new IronflowAPI("http://api").withContext({});
+    await expect(api.get("/v1/liquidations/map", { market: "PEPE-PERP" })).rejects.toThrow(`Ironflow API error 404 NOT_FOUND: ${message}`);
+    await expect(api.get("/v1/liquidations/map", { market: "PEPE-PERP" })).rejects.not.toThrow("Did you mean kPEPE-PERP? Did you mean");
+  });
 });
 
 describe("IronflowAPI.listMarkets", () => {
