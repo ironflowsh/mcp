@@ -172,7 +172,7 @@ describe("API notices in tool results", () => {
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("http://api/v1/ironbox");
     expect(init.method).toBe("POST");
-    expect(JSON.parse(init.body as string)).toEqual({ markets: ["perps"] });
+    expect(JSON.parse(init.body as string)).toEqual({ mode: "paper", markets: ["perps"] });
     expect((init.headers as Record<string, string>)["Authorization"]).toBe("Bearer if_test");
   });
 
@@ -245,8 +245,7 @@ describe("API notices in tool results", () => {
     }
     const live = (await client.callTool({ name: "create_ironbox", arguments: { mode: "live" } })) as { isError?: boolean; content: { text: string }[] };
     expect(live.isError).toBe(true);
-    expect(live.content[0].text).toContain("mode live needs an API key on a paid plan");
-    expect(live.content[0].text).toContain("https://ironflow.sh/key?utm_source=mcp");
+    expect(live.content[0].text).toBe("Error: Ironbox runs on paper only: simulated funds, never a real order. Leave mode out to get a paper box.");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
