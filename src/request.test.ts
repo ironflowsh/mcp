@@ -49,4 +49,11 @@ describe("readToolset", () => {
   it("rejects anything else instead of serving every tool", () => {
     expect(() => readToolset(url("?toolset=dat"))).toThrow(HttpError);
   });
+  it("serves the data tools on /data, and never more there", () => {
+    const data = (q = "") => new URL(`https://mcp.ironflow.sh/data${q}`);
+    expect(readToolset(data())).toBe("data");
+    expect(readToolset(data("?toolset=data"))).toBe("data");
+    expect(readToolset(data(`?key=${KEY}`))).toBe("data");
+    expect(() => readToolset(data("?toolset=all"))).toThrow(HttpError);
+  });
 });
