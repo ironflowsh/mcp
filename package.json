@@ -1,6 +1,6 @@
 {
   "name": "@ironflowsh/mcp",
-  "version": "0.18.0",
+  "version": "0.18.1",
   "mcpName": "io.github.ironflowsh/hyperliquid",
   "description": "Ironflow Hyperliquid MCP server: market data, liquidations, wallet analytics, alerts and Ironbox paper-trading sandboxes for AI agents and trading bots",
   "author": "Ironflow <hello@ironflow.sh>",

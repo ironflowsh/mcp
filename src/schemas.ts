@@ -70,7 +70,7 @@ const IRONBOX = {
   name: d("Name"),
   state: d("creating, running, stopped, deleted or error"),
   size: d("small, medium or large"),
-  mode: d("paper (simulated funds) or live"),
+  mode: d("paper: simulated funds, never a real order"),
   runtime: d("python or node"),
   markets: d("Markets the agent trades: perps, outcomes, spot"),
   region: d("Where it runs, e.g. tokyo"),

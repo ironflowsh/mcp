@@ -40,18 +40,15 @@ export interface ToolDef {
 // Alerts and boxes belong to an account, so these tools need a key.
 const always = (): boolean => true;
 
-// A live Ironbox trades real funds and needs a paid key; a paper box needs none.
-const liveMode = (args: Record<string, unknown>): boolean =>
-  typeof args.mode === "string" && args.mode.trim().toLowerCase() === "live";
+// Ironbox is paper only: simulated funds, never a real order. A client that
+// still sends another mode (an old cached schema) gets a plain refusal.
+export const PAPER_ONLY = "Ironbox runs on paper only: simulated funds, never a real order. Leave mode out to get a paper box.";
 
 // KEY_PAGE is the free key page, tagged so key requests from MCP are counted.
 export const KEY_PAGE = "https://ironflow.sh/key?utm_source=mcp";
 
 // keyRequiredText is the answer to a keyless call of a key-only tool.
 export function keyRequiredText(tool: string, args: Record<string, unknown>): string {
-  if (tool === "create_ironbox" && liveMode(args)) {
-    return `create_ironbox with mode live needs an API key on a paid plan. Leave mode out for a 24-hour paper box with no key, or get a free key to keep one: ${KEY_PAGE}`;
-  }
   return `${tool} needs an API key (a free key works). Get one in a minute at ${KEY_PAGE}, then connect with the header Authorization: Bearer if_... (or ?key=if_... on the URL).`;
 }
 
@@ -542,13 +539,12 @@ export const tools: ToolDef[] = [
     name: "create_ironbox",
     title: "Spin up an Ironbox",
     description:
-      "Spin up an Ironbox: a secure sandbox next to Hyperliquid where an agent runs and trades, with Ironflow data, analytics, alerts and execution built in. No key needed for mode paper (the default): you get a trial box, the agent's own simulated Hyperliquid account for 24 hours, with base_url and expires_at. It ends sooner after 2 hours with no requests and no strategy running. Point the Hyperliquid SDK's base_url at it, or start a strategy on it with start_box_strategy. A free key keeps a box; mode live needs a paid plan. A live box stays creating until get_ironbox shows it running.",
+      "Spin up an Ironbox: a secure sandbox next to Hyperliquid where an agent trades on paper, with Ironflow data, analytics and alerts built in. No key needed: you get a trial box, the agent's own simulated Hyperliquid account for 24 hours, with base_url and expires_at. It ends sooner after 2 hours with no requests and no strategy running. Point the Hyperliquid SDK's base_url at it, or start a strategy on it with start_box_strategy. A free key keeps a box. A paper box never places a real order.",
     inputSchema: {
       type: "object",
       properties: {
         name: { type: "string", description: "Name for the Ironbox, e.g. btc-funding-bot" },
         size: { type: "string", enum: ["small", "medium", "large"], description: "small (default), medium or large" },
-        mode: { type: "string", enum: ["paper", "live"], description: "paper (default) trades with simulated funds; live trades real funds" },
         runtime: { type: "string", enum: ["python", "node"], description: "python (default) or node" },
         markets: {
           type: "array",
@@ -560,10 +556,11 @@ export const tools: ToolDef[] = [
       required: [],
     },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
-    needsKey: liveMode,
     handler: async (args, api) => {
-      const body: Record<string, unknown> = {};
-      for (const key of ["name", "size", "mode", "runtime", "note"]) {
+      const mode = optionalString(args, "mode", "paper").trim().toLowerCase() || "paper";
+      if (mode !== "paper") throw new Error(PAPER_ONLY);
+      const body: Record<string, unknown> = { mode: "paper" };
+      for (const key of ["name", "size", "runtime", "note"]) {
         const val = optionalString(args, key, "").trim();
         if (val) body[key] = val;
       }
@@ -576,7 +573,7 @@ export const tools: ToolDef[] = [
     name: "list_ironboxes",
     title: "List Ironboxes",
     description:
-      "The Ironboxes on this API key's account, the sandboxes where agents run and trade next to Hyperliquid: id, name, state (creating, running, stopped, deleted or error), size, mode, runtime and markets. Without a key there are no saved boxes, and the answer says how to make a trial box with create_ironbox.",
+      "The Ironboxes on this API key's account, the sandboxes where agents trade on paper next to Hyperliquid: id, name, state (creating, running, stopped, deleted or error), size, mode, runtime and markets. Without a key there are no saved boxes, and the answer says how to make a trial box with create_ironbox.",
     inputSchema: { type: "object", properties: {}, required: [] },
     handler: async (_args, api) => JSON.stringify(await api.get("/v1/ironbox"), null, 2),
   },

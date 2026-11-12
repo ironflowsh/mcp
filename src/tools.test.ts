@@ -547,16 +547,16 @@ describe("Ironbox tools", () => {
       { name: " funding-bot ", mode: "paper", markets: ["perps", "Outcomes"], note: "" },
       mockApi({ post })
     );
-    expect(post).toHaveBeenCalledWith("/v1/ironbox", { name: "funding-bot", mode: "paper", markets: ["perps", "outcomes"] });
+    expect(post).toHaveBeenCalledWith("/v1/ironbox", { mode: "paper", name: "funding-bot", markets: ["perps", "outcomes"] });
     expect(JSON.parse(out)).toEqual(box);
   });
 
   it("create works with no arguments and reads comma-separated markets", async () => {
     const post = vi.fn().mockResolvedValue(box);
     await findTool("create_ironbox").handler({}, mockApi({ post }));
-    expect(post).toHaveBeenLastCalledWith("/v1/ironbox", {});
+    expect(post).toHaveBeenLastCalledWith("/v1/ironbox", { mode: "paper" });
     await findTool("create_ironbox").handler({ size: "large", runtime: "node", markets: "perps, spot" }, mockApi({ post }));
-    expect(post).toHaveBeenLastCalledWith("/v1/ironbox", { size: "large", runtime: "node", markets: ["perps", "spot"] });
+    expect(post).toHaveBeenLastCalledWith("/v1/ironbox", { mode: "paper", size: "large", runtime: "node", markets: ["perps", "spot"] });
     await expect(findTool("create_ironbox").handler({ markets: [1] }, mockApi({ post }))).rejects.toThrow("markets");
   });
 
@@ -736,11 +736,19 @@ describe("key-only tools", () => {
     }
   });
 
-  it("create_ironbox needs a key only for mode live", () => {
+  it("create_ironbox needs no key and is paper only", async () => {
     const tool = findTool("create_ironbox");
-    expect(tool.needsKey?.({})).toBe(false);
-    expect(tool.needsKey?.({ mode: "paper" })).toBe(false);
-    expect(tool.needsKey?.({ mode: "live" })).toBe(true);
+    expect(tool.needsKey).toBeUndefined();
+    expect(JSON.stringify(tool.inputSchema)).not.toContain("live");
+    expect(tool.description).not.toMatch(/\blive\b|real funds/);
+    const post = vi.fn().mockResolvedValue({});
+    for (const mode of ["live", "LIVE ", "real"]) {
+      await expect(tool.handler({ mode }, mockApi({ post }))).rejects.toThrow("paper only");
+    }
+    await tool.handler({ mode: " Paper " }, mockApi({ post }));
+    await tool.handler({ mode: "" }, mockApi({ post }));
+    expect(post).toHaveBeenCalledTimes(2);
+    expect(post).toHaveBeenLastCalledWith("/v1/ironbox", { mode: "paper" });
   });
 
   it("every other tool works without a key", () => {
