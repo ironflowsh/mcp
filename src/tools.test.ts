@@ -724,3 +724,27 @@ describe("number-like parameters", () => {
     });
   });
 });
+
+describe("key-only tools", () => {
+  const keyOnly = ["create_liquidation_alert", "list_liquidation_alerts", "test_liquidation_alert", "delete_liquidation_alert", "get_ironbox", "delete_ironbox"];
+
+  it("are marked and say so in their description", () => {
+    for (const name of keyOnly) {
+      const tool = findTool(name);
+      expect(tool.needsKey?.({}), name).toBe(true);
+      expect(tool.description, name).toMatch(/Needs an API key/);
+    }
+  });
+
+  it("create_ironbox needs a key only for mode live", () => {
+    const tool = findTool("create_ironbox");
+    expect(tool.needsKey?.({})).toBe(false);
+    expect(tool.needsKey?.({ mode: "paper" })).toBe(false);
+    expect(tool.needsKey?.({ mode: "live" })).toBe(true);
+  });
+
+  it("every other tool works without a key", () => {
+    const marked = tools.filter((t) => t.needsKey && t.name !== "create_ironbox").map((t) => t.name);
+    expect(marked.sort()).toEqual([...keyOnly].sort());
+  });
+});

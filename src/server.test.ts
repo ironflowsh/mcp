@@ -6,7 +6,7 @@ import { IronflowAPI } from "./api.js";
 import type { Toolset } from "./tools.js";
 
 async function connect(api: Partial<IronflowAPI>, outcomes: ToolOutcome[], toolset?: Toolset): Promise<Client> {
-  const stub = { notice: () => "", ...api, withContext: () => stub } as unknown as IronflowAPI;
+  const stub = { notice: () => "", hasKey: () => true, ...api, withContext: () => stub } as unknown as IronflowAPI;
   const server = createServer(stub, "test", { onToolResult: (o) => outcomes.push(o), toolset });
   const [a, b] = InMemoryTransport.createLinkedPair();
   await server.connect(a);
@@ -90,9 +90,9 @@ describe("toolsets", () => {
 
 describe("API notices in tool results", () => {
   // A real IronflowAPI over a stubbed fetch, so the headers go the whole way.
-  async function realClient(response: () => Response): Promise<Client> {
+  async function realClient(response: () => Response, key?: string): Promise<Client> {
     vi.stubGlobal("fetch", vi.fn(async () => response()));
-    const server = createServer(new IronflowAPI("http://api"), "test");
+    const server = createServer(new IronflowAPI("http://api", key), "test");
     const [a, b] = InMemoryTransport.createLinkedPair();
     await server.connect(a);
     const client = new Client({ name: "test", version: "1" });
@@ -178,7 +178,8 @@ describe("API notices in tool results", () => {
 
   it("delete_ironbox returns the deleted Ironbox", async () => {
     const client = await realClient(
-      () => new Response(JSON.stringify({ id: "ibx_01JC7W2K", state: "deleted" }), { headers: { "content-type": "application/json" } })
+      () => new Response(JSON.stringify({ id: "ibx_01JC7W2K", state: "deleted" }), { headers: { "content-type": "application/json" } }),
+      "if_test"
     );
     const res = (await client.callTool({ name: "delete_ironbox", arguments: { id: "ibx_01JC7W2K" } })) as {
       structuredContent: Record<string, unknown>;
@@ -218,25 +219,43 @@ describe("API notices in tool results", () => {
     expect((init.headers as Record<string, string>)["Authorization"]).toBeUndefined();
   });
 
-  it("without a key, the other Ironbox tools return the API's free key guidance", async () => {
-    const message =
-      'Ironbox needs an API key. Get a free one at https://ironflow.sh/key, or POST https://api.ironflow.sh/v1/keys with {"email": "you@example.com"}';
-    const client = await realClient(
-      () =>
-        new Response(JSON.stringify({ error: { code: "KEY_REQUIRED", message } }), {
-          status: 401,
-          headers: { "content-type": "application/json" },
-        })
-    );
+  it("without a key, key-only tools say how to get one and never call the API", async () => {
+    // 8 of 116 MCP-made calls in the week to 2026-11-12 were keyless calls
+    // of list_ironboxes and list_liquidation_alerts answered a bare 401.
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const server = createServer(new IronflowAPI("http://api"), "test");
+    const [a, b] = InMemoryTransport.createLinkedPair();
+    await server.connect(a);
+    const client = new Client({ name: "test", version: "1" });
+    await client.connect(b);
     for (const [name, args] of [
-      ["list_ironboxes", {}],
+      ["list_liquidation_alerts", {}],
+      ["create_liquidation_alert", { url: "https://hooks.slack.com/services/T0/B0/x" }],
+      ["test_liquidation_alert", { id: "6f1c2a3b-0000-4000-8000-000000000000" }],
+      ["delete_liquidation_alert", { id: "6f1c2a3b-0000-4000-8000-000000000000" }],
       ["get_ironbox", { id: "ibx_01JC7W2K" }],
       ["delete_ironbox", { id: "ibx_01JC7W2K" }],
     ] as const) {
       const res = (await client.callTool({ name, arguments: args })) as { isError?: boolean; content: { text: string }[] };
       expect(res.isError, name).toBe(true);
-      expect(res.content[0].text, name).toBe(`Error: Ironflow API error 401 KEY_REQUIRED: ${message}`);
+      expect(res.content[0].text, name).toBe(
+        `Error: ${name} needs an API key (a free key works). Get one in a minute at https://ironflow.sh/key?utm_source=mcp, then connect with the header Authorization: Bearer if_... (or ?key=if_... on the URL).`
+      );
     }
+    const live = (await client.callTool({ name: "create_ironbox", arguments: { mode: "live" } })) as { isError?: boolean; content: { text: string }[] };
+    expect(live.isError).toBe(true);
+    expect(live.content[0].text).toContain("mode live needs an API key on a paid plan");
+    expect(live.content[0].text).toContain("https://ironflow.sh/key?utm_source=mcp");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("without a key, list_ironboxes still asks the API, which says how to get a trial box", async () => {
+    const reply = { data: [], message: "No API key, so no saved Ironboxes. POST https://api.ironflow.sh/v1/ironbox makes a 24-hour trial paper box with no key." };
+    const client = await realClient(() => new Response(JSON.stringify(reply), { headers: { "content-type": "application/json" } }));
+    const res = (await client.callTool({ name: "list_ironboxes", arguments: {} })) as { isError?: boolean; structuredContent: Record<string, unknown> };
+    expect(res.isError).toBeFalsy();
+    expect(res.structuredContent).toEqual(reply);
   });
 
   it("returns the API's error message, with its key link, as the tool error", async () => {
