@@ -2,6 +2,7 @@
 
 import { IronflowAPI } from "./api.js";
 import { SUMMARY_WINDOWS, WINDOW_MINUTES, summaryOutput, type LiquidationSummaryResponse } from "./liquidations.js";
+import { plainSchema, plainText } from "./plain.js";
 import { MAX_LIMIT, rankSnapshot, SORT_KEYS, type SortKey } from "./snapshot.js";
 import {
   BEHAVIOR_LABELS,
@@ -1428,9 +1429,12 @@ export const tools: ToolDef[] = [
   },
 ];
 
-// A toolset picks the tools a server serves. "data" leaves out the Ironbox
-// tools, which run an agent that trades, for directory listings that take
-// data tools only (mcp.ironflow.sh/mcp?toolset=data).
+// A toolset picks the tools a server serves. "data" is the build for
+// assistant directories (mcp.ironflow.sh/mcp?toolset=data), whose rules take
+// read-only data tools only: it leaves out the Ironbox tools, which run an
+// agent that trades, and the alert tools, which change an account and post
+// to outside channels. What is left only reads, needs no key, and carries no
+// plan, x402 or key sign-up lines (plain.ts).
 export type Toolset = "all" | "data";
 
 export const IRONBOX_TOOLS = [
@@ -1438,6 +1442,28 @@ export const IRONBOX_TOOLS = [
   "start_box_strategy", "list_box_strategies", "stop_box_strategy", "get_box_activity",
 ];
 
+export const ALERT_TOOLS = [
+  "create_liquidation_alert", "list_liquidation_alerts", "test_liquidation_alert", "delete_liquidation_alert",
+];
+
+const NOT_DATA = new Set([...IRONBOX_TOOLS, ...ALERT_TOOLS]);
+
+// isDataTool: a tool the data toolset serves. Any tool that says it changes
+// something (readOnlyHint false) is left out too, so a new write tool can
+// never reach a directory listing by being missing from the lists above.
+const isDataTool = (t: ToolDef): boolean => !NOT_DATA.has(t.name) && t.annotations?.readOnlyHint !== false;
+
+// plainTool is a tool as the data toolset serves it, its descriptions plain.
+const plainTool = (t: ToolDef): ToolDef => ({
+  ...t,
+  description: plainText(t.description),
+  inputSchema: plainSchema(t.inputSchema),
+});
+
+let dataTools: ToolDef[] | undefined;
+
 export function toolsFor(toolset: Toolset = "all"): ToolDef[] {
-  return toolset === "data" ? tools.filter((t) => !IRONBOX_TOOLS.includes(t.name)) : tools;
+  if (toolset !== "data") return tools;
+  dataTools ??= tools.filter(isDataTool).map(plainTool);
+  return dataTools;
 }

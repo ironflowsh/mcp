@@ -1,7 +1,7 @@
 // Unit tests for MCP tool handlers.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { IRONBOX_TOOLS, tools, toolsFor } from "./tools.js";
+import { ALERT_TOOLS, IRONBOX_TOOLS, tools, toolsFor } from "./tools.js";
 import { outputSchemas } from "./schemas.js";
 import { structuredFrom } from "./server.js";
 import type { IronflowAPI } from "./api.js";
@@ -33,12 +33,40 @@ describe("tools array", () => {
     expect(tools).toHaveLength(54);
   });
 
-  it("the data toolset leaves out only the Ironbox tools", () => {
+  it("the data toolset leaves out the Ironbox and alert tools", () => {
     expect(toolsFor()).toBe(tools);
     const data = toolsFor("data").map((t) => t.name);
-    expect(data).toHaveLength(46);
-    expect(data.filter((n) => n.includes("ironbox") || n.includes("box_"))).toEqual([]);
-    expect(tools.filter((t) => !data.includes(t.name)).map((t) => t.name)).toEqual(IRONBOX_TOOLS);
+    expect(data).toHaveLength(42);
+    expect(data.filter((n) => n.includes("ironbox") || n.includes("box_") || n.includes("alert"))).toEqual([]);
+    expect(tools.filter((t) => !data.includes(t.name)).map((t) => t.name).sort()).toEqual([...IRONBOX_TOOLS, ...ALERT_TOOLS].sort());
+  });
+
+  it("every data tool only reads and works without a key", () => {
+    for (const t of toolsFor("data")) {
+      expect(t.annotations?.readOnlyHint ?? true, t.name).toBe(true);
+      expect(t.annotations?.destructiveHint, t.name).not.toBe(true);
+      expect(t.needsKey, t.name).toBeUndefined();
+    }
+  });
+
+  it("data tool text sells no plan, payment or key", () => {
+    const sells = /x402|pay[- ]per[- ]call|upgrade|founding|paid plan|\b(Explorer|Builder|Enterprise)\b|free key|ironflow\.sh\/(key|upgrade)|\/v1\/keys/i;
+    for (const t of toolsFor("data")) {
+      // HIP-3 "builder" markets are a Hyperliquid term, not a plan.
+      const text = JSON.stringify([t.description, t.inputSchema]).replace(/\bbuilder\b/g, "");
+      expect(text, t.name).not.toMatch(sells);
+    }
+  });
+
+  it("the data toolset keeps every fact that sells nothing", () => {
+    const changed = toolsFor("data").filter((t) => t.description !== findTool(t.name).description).map((t) => t.name);
+    expect(changed.sort()).toEqual(["get_liquidation_levels", "get_liquidation_map", "get_vault_leaderboard", "run_query"]);
+    expect(toolsFor("data").find((t) => t.name === "get_liquidation_map")?.description).toMatch(
+      /Without a key you get the 10 largest ranges within 10% of the price\.$/
+    );
+    expect(toolsFor("data").find((t) => t.name === "run_query")?.description).toMatch(
+      /Keyless: last 24 hours, 5 s per query, 60 query seconds per hour per IP\.$/
+    );
   });
 
   it("drops tools whose tables stopped updating", () => {

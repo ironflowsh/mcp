@@ -14,18 +14,30 @@ import type { IronflowAPI } from "./api.js";
 import { fitToBudget } from "./budget.js";
 import { fitEnums } from "./enums.js";
 import { attachNotice, enumNotice } from "./notice.js";
-import { outputSchemas } from "./schemas.js";
+import { DATA_NOTICE, plainError, plainResult, plainSchema, plainText } from "./plain.js";
+import { outputSchemas, type Schema } from "./schemas.js";
 import { keyRequiredText, type Toolset, toolsFor } from "./tools.js";
 
 // One-line summary for MCP directories and client server lists.
 const DESCRIPTION =
   "Hyperliquid market data and wallet analytics from our own nodes, plus liquidation alerts to Discord, Slack, Telegram or a webhook: trades, funding, liquidations, open interest, wallet PnL and trader rankings. Native perps, HIP-3, HIP-4 and spot. No API key needed.";
+// The data toolset has no alert tools.
+const DATA_DESCRIPTION =
+  "Hyperliquid market data and wallet analytics from our own nodes: trades, funding, liquidations, open interest, wallet PnL and trader rankings. Native perps, HIP-3, HIP-4 and spot. Read-only, no API key needed.";
 
 // Server-level guidance the client shows the model alongside the tool list.
-// The data toolset leaves the Ironbox sentence out with the Ironbox tools.
-const IRONBOX_INSTRUCTION = " An agent can spin up its own Ironbox with create_ironbox to trade on paper next to Hyperliquid. It needs no key; get_ironbox and delete_ironbox need one.";
-const instructions = (toolset: Toolset): string =>
-  `Hyperliquid market data from Ironflow's own nodes, and liquidation alerts: trades, candles, funding, open interest, liquidations, mark prices, market snapshots and wallet analytics for native perps, HIP-3 builder markets, HIP-4 outcomes and spot. Markets take display symbols (BTC-PERP, xyz:NVDA-PERP, HYPE/USDC) or Hyperliquid names (BTC, @107, xyz:NVDA); list_markets with q finds a name. Times take Unix ms, Unix seconds, ISO 8601 or relative times (-7d, -24h, now). Where to start: liquidations with get_liquidations (rows) or get_liquidation_summary (totals by market and window), and get_liquidation_map for where open positions would be liquidated if the price moved; a wallet with get_user_state (positions), get_user_pnl_series and get_user_funding; market moves with get_markets_snapshot, get_candles and get_open_interest_changes; who trades with get_top_traders and get_market_top_wallets. To have liquidations posted to the user's Discord, Slack, Telegram or webhook as they happen, use create_liquidation_alert, then test_liquidation_alert (the alert tools need an API key, a free key works).${toolset === "data" ? "" : IRONBOX_INSTRUCTION} A result that starts with a notice says how a market name was read or that the data starts later than asked; pass its next step on to the user. For anything the named tools do not cover, call describe_data and then run_query with ClickHouse SQL over the hl.* tables. Keyless use allows 30 requests per minute, 300 per day and 24 hours of history; a free key from https://ironflow.sh/key raises that to 60 per minute and 14 days. Agents with a USDC wallet on Base can also pay per call with x402, from $0.001, with no key: https://docs.ironflow.sh/guides/pay-per-call.`;
+// The data toolset (plain.ts) leaves out the alert, Ironbox, key and x402
+// sentences with the tools they are about.
+const NAMES =
+  "Markets take display symbols (BTC-PERP, xyz:NVDA-PERP, HYPE/USDC) or Hyperliquid names (BTC, @107, xyz:NVDA); list_markets with q finds a name. Times take Unix ms, Unix seconds, ISO 8601 or relative times (-7d, -24h, now).";
+const WHERE_TO_START =
+  "Where to start: liquidations with get_liquidations (rows) or get_liquidation_summary (totals by market and window), and get_liquidation_map for where open positions would be liquidated if the price moved; a wallet with get_user_state (positions), get_user_pnl_series and get_user_funding; market moves with get_markets_snapshot, get_candles and get_open_interest_changes; who trades with get_top_traders and get_market_top_wallets.";
+const SQL =
+  "For anything the named tools do not cover, call describe_data and then run_query with ClickHouse SQL over the hl.* tables.";
+const KEYLESS = "Keyless use allows 30 requests per minute, 300 per day and 24 hours of history";
+const DATA_INSTRUCTIONS = `Hyperliquid market data from Ironflow's own nodes: trades, candles, funding, open interest, liquidations, mark prices, market snapshots and wallet analytics for native perps, HIP-3 builder markets, HIP-4 outcomes and spot. Every tool only reads. ${NAMES} ${WHERE_TO_START} A result that starts with a notice says how a market name was read or that the data starts later than asked; pass it on to the user. ${SQL} ${KEYLESS}.`;
+const ALL_INSTRUCTIONS = `Hyperliquid market data from Ironflow's own nodes, and liquidation alerts: trades, candles, funding, open interest, liquidations, mark prices, market snapshots and wallet analytics for native perps, HIP-3 builder markets, HIP-4 outcomes and spot. ${NAMES} ${WHERE_TO_START} To have liquidations posted to the user's Discord, Slack, Telegram or webhook as they happen, use create_liquidation_alert, then test_liquidation_alert (the alert tools need an API key, a free key works). An agent can spin up its own Ironbox with create_ironbox to trade on paper next to Hyperliquid. It needs no key; get_ironbox and delete_ironbox need one. A result that starts with a notice says how a market name was read or that the data starts later than asked; pass its next step on to the user. ${SQL} ${KEYLESS}; a free key from https://ironflow.sh/key raises that to 60 per minute and 14 days. Agents with a USDC wallet on Base can also pay per call with x402, from $0.001, with no key: https://docs.ironflow.sh/guides/pay-per-call.`;
+export const instructions = (toolset: Toolset): string => (toolset === "data" ? DATA_INSTRUCTIONS : ALL_INSTRUCTIONS);
 
 // Reads the package version from package.json so MCP clients see the real
 // version in serverInfo instead of a constant that drifts on every release.
@@ -47,7 +59,8 @@ export interface ServerOptions {
   fallbackClient?: string;
   // onToolResult hears how each tool call ended, for the hosted access log.
   onToolResult?: (result: ToolOutcome) => void;
-  // toolset "data" serves every tool except the Ironbox ones; default all.
+  // toolset "data" serves the read-only data tools only, with no plan, x402
+  // or key sign-up lines (tools.ts, plain.ts); default all.
   toolset?: Toolset;
 }
 
@@ -68,13 +81,16 @@ export interface ToolOutcome {
 // createServer wires the tool list and tool calls to one API client.
 export function createServer(api: IronflowAPI, version: string, options: ServerOptions = {}): Server {
   const toolset = options.toolset ?? "all";
+  const data = toolset === "data";
   const tools = toolsFor(toolset);
+  const outputSchema = (name: string): Schema =>
+    data ? dataOutputSchema(name) : outputSchemas[name];
   const server = new Server(
     {
       name: "ironflow",
       title: "Ironflow Hyperliquid",
       version,
-      description: DESCRIPTION,
+      description: data ? DATA_DESCRIPTION : DESCRIPTION,
       websiteUrl: "https://ironflow.sh/#mcp",
       icons: [
         { src: "https://ironflow.sh/apple-touch-icon.png", mimeType: "image/png", sizes: ["256x256"] },
@@ -94,7 +110,7 @@ export function createServer(api: IronflowAPI, version: string, options: ServerO
       title: t.title,
       description: t.description,
       inputSchema: t.inputSchema,
-      outputSchema: outputSchemas[t.name],
+      outputSchema: outputSchema(t.name),
       annotations: { title: t.title, ...(t.annotations ?? { readOnlyHint: true }), openWorldHint: true },
     })),
   }));
@@ -119,7 +135,8 @@ export function createServer(api: IronflowAPI, version: string, options: ServerO
     // One client copy per call, so the notices read below are this call's.
     const scoped = api.withContext({ client, tool: name });
     if (tool.needsKey?.(args ?? {}) && !scoped.hasKey()) {
-      return { content: [{ type: "text", text: `Error: ${keyRequiredText(name, args ?? {})}` }], isError: true };
+      const text = data ? `Error: ${name} needs an API key.` : `Error: ${keyRequiredText(name, args ?? {})}`;
+      return { content: [{ type: "text", text }], isError: true };
     }
     try {
       // An option value outside the tool's list never reaches the API, which
@@ -133,7 +150,9 @@ export function createServer(api: IronflowAPI, version: string, options: ServerO
       const structured = structuredFrom(await tool.handler(fitted, scoped));
       // Compact JSON, trimmed to fit a client's per-result limit, with the
       // notice (ours, then the API's, if any) first.
-      const text = fitToBudget(attachNotice(structured, scoped.notice()));
+      const text = data
+        ? fitToBudget(attachNotice(plainResult(name, structured), plainText(scoped.notice())))
+        : fitToBudget(attachNotice(structured, scoped.notice()));
       return {
         content: [{ type: "text", text }],
         structuredContent: JSON.parse(text) as Record<string, unknown>,
@@ -142,11 +161,19 @@ export function createServer(api: IronflowAPI, version: string, options: ServerO
       const message = error instanceof Error ? error.message : String(error);
       const notice = scoped.notice();
       const text = notice && !message.includes(notice) ? `Error: ${message} ${notice}` : `Error: ${message}`;
-      return { content: [{ type: "text", text }], isError: true };
+      return { content: [{ type: "text", text: data ? plainError(text) : text }], isError: true };
     }
   }
 
   return server;
+}
+
+// dataOutputSchema is a tool's output schema as the data toolset lists it:
+// descriptions plain, and the notice described without its key next step.
+function dataOutputSchema(name: string): Schema {
+  const schema = plainSchema(outputSchemas[name]);
+  const properties = schema.properties as Record<string, Schema> | undefined;
+  return properties ? { ...schema, properties: { ...properties, notice: DATA_NOTICE } } : schema;
 }
 
 // structuredFrom turns a tool's JSON text into MCP structured output. Every
