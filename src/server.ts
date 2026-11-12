@@ -15,7 +15,7 @@ import { fitToBudget } from "./budget.js";
 import { fitEnums } from "./enums.js";
 import { attachNotice, enumNotice } from "./notice.js";
 import { outputSchemas } from "./schemas.js";
-import { type Toolset, toolsFor } from "./tools.js";
+import { keyRequiredText, type Toolset, toolsFor } from "./tools.js";
 
 // One-line summary for MCP directories and client server lists.
 const DESCRIPTION =
@@ -23,9 +23,9 @@ const DESCRIPTION =
 
 // Server-level guidance the client shows the model alongside the tool list.
 // The data toolset leaves the Ironbox sentence out with the Ironbox tools.
-const IRONBOX_INSTRUCTION = " An agent can spin up its own Ironbox with create_ironbox to run and trade next to Hyperliquid.";
+const IRONBOX_INSTRUCTION = " An agent can spin up its own Ironbox with create_ironbox to run and trade next to Hyperliquid; a paper box needs no key, get_ironbox and delete_ironbox need one.";
 const instructions = (toolset: Toolset): string =>
-  `Hyperliquid market data from Ironflow's own nodes, and liquidation alerts: trades, candles, funding, open interest, liquidations, mark prices, market snapshots and wallet analytics for native perps, HIP-3 builder markets, HIP-4 outcomes and spot. Markets take display symbols (BTC-PERP, xyz:NVDA-PERP, HYPE/USDC) or Hyperliquid names (BTC, @107, xyz:NVDA); list_markets with q finds a name. Times take Unix ms, Unix seconds, ISO 8601 or relative times (-7d, -24h, now). Where to start: liquidations with get_liquidations (rows) or get_liquidation_summary (totals by market and window), and get_liquidation_map for where open positions would be liquidated if the price moved; a wallet with get_user_state (positions), get_user_pnl_series and get_user_funding; market moves with get_markets_snapshot, get_candles and get_open_interest_changes; who trades with get_top_traders and get_market_top_wallets. To have liquidations posted to the user's Discord, Slack, Telegram or webhook as they happen, use create_liquidation_alert (needs an API key), then test_liquidation_alert.${toolset === "data" ? "" : IRONBOX_INSTRUCTION} A result that starts with a notice says how a market name was read or that the data starts later than asked; pass its next step on to the user. For anything the named tools do not cover, call describe_data and then run_query with ClickHouse SQL over the hl.* tables. Keyless use allows 30 requests per minute, 300 per day and 24 hours of history; a free key from https://ironflow.sh/key raises that to 60 per minute and 14 days. Agents with a USDC wallet on Base can also pay per call with x402, from $0.001, with no key: https://docs.ironflow.sh/guides/pay-per-call.`;
+  `Hyperliquid market data from Ironflow's own nodes, and liquidation alerts: trades, candles, funding, open interest, liquidations, mark prices, market snapshots and wallet analytics for native perps, HIP-3 builder markets, HIP-4 outcomes and spot. Markets take display symbols (BTC-PERP, xyz:NVDA-PERP, HYPE/USDC) or Hyperliquid names (BTC, @107, xyz:NVDA); list_markets with q finds a name. Times take Unix ms, Unix seconds, ISO 8601 or relative times (-7d, -24h, now). Where to start: liquidations with get_liquidations (rows) or get_liquidation_summary (totals by market and window), and get_liquidation_map for where open positions would be liquidated if the price moved; a wallet with get_user_state (positions), get_user_pnl_series and get_user_funding; market moves with get_markets_snapshot, get_candles and get_open_interest_changes; who trades with get_top_traders and get_market_top_wallets. To have liquidations posted to the user's Discord, Slack, Telegram or webhook as they happen, use create_liquidation_alert, then test_liquidation_alert (the alert tools need an API key, a free key works).${toolset === "data" ? "" : IRONBOX_INSTRUCTION} A result that starts with a notice says how a market name was read or that the data starts later than asked; pass its next step on to the user. For anything the named tools do not cover, call describe_data and then run_query with ClickHouse SQL over the hl.* tables. Keyless use allows 30 requests per minute, 300 per day and 24 hours of history; a free key from https://ironflow.sh/key raises that to 60 per minute and 14 days. Agents with a USDC wallet on Base can also pay per call with x402, from $0.001, with no key: https://docs.ironflow.sh/guides/pay-per-call.`;
 
 // Reads the package version from package.json so MCP clients see the real
 // version in serverInfo instead of a constant that drifts on every release.
@@ -118,6 +118,9 @@ export function createServer(api: IronflowAPI, version: string, options: ServerO
     const client = info?.name ? `${info.name}${info.version ? `/${info.version}` : ""}` : options.fallbackClient;
     // One client copy per call, so the notices read below are this call's.
     const scoped = api.withContext({ client, tool: name });
+    if (tool.needsKey?.(args ?? {}) && !scoped.hasKey()) {
+      return { content: [{ type: "text", text: `Error: ${keyRequiredText(name, args ?? {})}` }], isError: true };
+    }
     try {
       // An option value outside the tool's list never reaches the API, which
       // would answer 400: it is read as the allowed value it obviously means

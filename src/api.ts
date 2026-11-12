@@ -168,14 +168,14 @@ export class IronflowAPI {
     const retryNote = Number.isFinite(retry) && retry > 0 ? ` Retry after ${retry} s.` : "";
     try {
       const parsed = JSON.parse(text) as {
-        error?: { code?: string; message?: string; detail?: string };
+        error?: { code?: string; message?: string; detail?: string; did_you_mean?: unknown };
       };
       const code = parsed.error?.code;
-      const message = parsed.error?.message;
+      const message = withSuggestions(parsed.error?.message ?? text, parsed.error?.did_you_mean);
       const detail = parsed.error?.detail ? ` (${parsed.error.detail})` : "";
       this.record(res.status, code);
       if (code) {
-        return new Error(`Ironflow API error ${res.status} ${code}: ${message ?? text}${detail}${retryNote}`);
+        return new Error(`Ironflow API error ${res.status} ${code}: ${message}${detail}${retryNote}`);
       }
     } catch {
       // Non-JSON response — fall through to raw text.
@@ -525,4 +525,22 @@ export class IronflowAPI {
 function setWindow(params: Record<string, string>, from: string, to: string): void {
   if (from) params.from = from;
   if (to) params.to = to;
+}
+
+// MAX_SUGGESTIONS caps the market names taken from an error's did_you_mean.
+const MAX_SUGGESTIONS = 5;
+const SUGGESTION_PATTERN = /^[A-Za-z0-9@#:/._-]{1,60}$/;
+
+// withSuggestions ends an error message with the markets the API's
+// did_you_mean names (an unknown market such as XAU gets xyz:GOLD-PERP and
+// PAXG-PERP), leaving out the ones the message already names.
+export function withSuggestions(message: string, didYouMean: unknown): string {
+  if (!Array.isArray(didYouMean)) return message;
+  const names = didYouMean
+    .filter((n): n is string => typeof n === "string" && SUGGESTION_PATTERN.test(n))
+    .slice(0, MAX_SUGGESTIONS)
+    .filter((n) => !message.includes(n));
+  if (names.length === 0) return message;
+  const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}`;
+  return `${message.replace(/[.\s]+$/, "")}. Did you mean ${list}?`;
 }

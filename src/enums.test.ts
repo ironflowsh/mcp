@@ -171,7 +171,7 @@ describe("tools called with values outside their lists", () => {
         });
       })
     );
-    const server = createServer(new IronflowAPI("http://api"), "test");
+    const server = createServer(new IronflowAPI("http://api", "if_test"), "test");
     const [a, b] = InMemoryTransport.createLinkedPair();
     await server.connect(a);
     const client = new Client({ name: "test", version: "1" });
@@ -269,7 +269,7 @@ describe("tools called with values outside their lists", () => {
         headers: { "content-type": "application/json", "X-Ironflow-Market": "BTC-PERP" },
       }))
     );
-    const server = createServer(new IronflowAPI("http://api"), "test");
+    const server = createServer(new IronflowAPI("http://api", "if_test"), "test");
     const [a, b] = InMemoryTransport.createLinkedPair();
     await server.connect(a);
     const client = new Client({ name: "test", version: "1" });

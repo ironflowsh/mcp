@@ -26,6 +26,7 @@ import { createServer as createHttpServer, IncomingMessage, ServerResponse } fro
 
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { IronflowAPI } from "./api.js";
+import { discoverReply } from "./discover.js";
 import { clientIP, HttpError, readKey, readToolset } from "./request.js";
 import { createServer, packageVersion, type ToolOutcome } from "./server.js";
 import {
@@ -123,18 +124,7 @@ async function handleMCP(req: IncomingMessage, res: ServerResponse, url: URL): P
     void api.withContext({ client }).noteRPC(rpc, Boolean(key), toolset === "all" ? undefined : toolset, qaCheck);
   }
   const outcomes: ToolOutcome[] = [];
-  const server = createServer(api, version, {
-    fallbackClient: recalled || userAgent,
-    onToolResult: (outcome) => outcomes.push(outcome),
-    toolset,
-  });
-  const transport = new StreamableHTTPServerTransport({
-    sessionIdGenerator: undefined,
-    enableJsonResponse: true,
-  });
-  res.on("close", () => {
-    void transport.close();
-    void server.close();
+  const logAccess = (): void => {
     console.log(
       JSON.stringify({
         msg: "mcp",
@@ -151,6 +141,28 @@ async function handleMCP(req: IncomingMessage, res: ServerResponse, url: URL): P
         ...toolLogFields(outcomes, api.upstreamCalls()),
       })
     );
+  };
+  // Answered before the transport, which would refuse the probe's new
+  // MCP-Protocol-Version header with a 400 (see discover.ts).
+  const discover = discoverReply(body);
+  if (discover) {
+    res.on("close", logAccess);
+    sendJSON(res, 200, discover);
+    return;
+  }
+  const server = createServer(api, version, {
+    fallbackClient: recalled || userAgent,
+    onToolResult: (outcome) => outcomes.push(outcome),
+    toolset,
+  });
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: undefined,
+    enableJsonResponse: true,
+  });
+  res.on("close", () => {
+    void transport.close();
+    void server.close();
+    logAccess();
   });
   await server.connect(transport);
   await transport.handleRequest(req, res, body);

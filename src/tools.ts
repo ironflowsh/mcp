@@ -31,6 +31,28 @@ export interface ToolDef {
   // What the tool does beyond reading, for the MCP annotations. Omitted: the
   // tool only reads.
   annotations?: { readOnlyHint: boolean; destructiveHint: boolean; idempotentHint: boolean };
+  // needsKey reports whether a call with these arguments needs an API key.
+  // Without one the server answers with how to get a key instead of calling
+  // the API. Omitted: the tool works keyless.
+  needsKey?: (args: Record<string, unknown>) => boolean;
+}
+
+// Alerts and boxes belong to an account, so these tools need a key.
+const always = (): boolean => true;
+
+// A live Ironbox trades real funds and needs a paid key; a paper box needs none.
+const liveMode = (args: Record<string, unknown>): boolean =>
+  typeof args.mode === "string" && args.mode.trim().toLowerCase() === "live";
+
+// KEY_PAGE is the free key page, tagged so key requests from MCP are counted.
+export const KEY_PAGE = "https://ironflow.sh/key?utm_source=mcp";
+
+// keyRequiredText is the answer to a keyless call of a key-only tool.
+export function keyRequiredText(tool: string, args: Record<string, unknown>): string {
+  if (tool === "create_ironbox" && liveMode(args)) {
+    return `create_ironbox with mode live needs an API key on a paid plan. Leave mode out for a 24-hour paper box with no key, or get a free key to keep one: ${KEY_PAGE}`;
+  }
+  return `${tool} needs an API key (a free key works). Get one in a minute at ${KEY_PAGE}, then connect with the header Authorization: Bearer if_... (or ?key=if_... on the URL).`;
 }
 
 // ─── Arg validation helpers ──────────────────────────────────────────────────
@@ -53,11 +75,15 @@ function optionalNumber(args: Record<string, unknown>, key: string, defaultVal: 
   return Math.floor(n);
 }
 
+// optionalString also takes a finite number and passes it on as text:
+// agents send bucket_size 100 as often as "100" (opencode's first
+// get_liquidation_map call failed on it, 2026-11-11).
 function optionalString(args: Record<string, unknown>, key: string, defaultVal: string): string {
   const val = args[key];
   if (val === undefined || val === null) return defaultVal;
+  if (typeof val === "number" && Number.isFinite(val)) return String(val);
   if (typeof val !== "string") {
-    throw new Error(`"${key}" must be a string`);
+    throw new Error(`"${key}" must be a string or a number`);
   }
   return val;
 }
@@ -140,10 +166,26 @@ const STRATEGY_FIELDS = [
   "interval_minutes", "take_profit_pct", "repeat",
 ];
 
+// The engine reads the grid prices as text and the sizes, counts and
+// percentages as numbers; agents send either form for both.
+const STRATEGY_TEXT_FIELDS = new Set(["kind", "market", "side", "lower_px", "upper_px"]);
+const STRATEGY_FLAG_FIELDS = new Set(["repeat"]);
+
+function strategyValue(key: string, val: unknown): unknown {
+  if (STRATEGY_TEXT_FIELDS.has(key)) {
+    return typeof val === "number" && Number.isFinite(val) ? String(val) : val;
+  }
+  if (STRATEGY_FLAG_FIELDS.has(key)) {
+    return val === "true" ? true : val === "false" ? false : val;
+  }
+  if (typeof val === "string" && val.trim() !== "" && Number.isFinite(Number(val))) return Number(val);
+  return val;
+}
+
 function strategyBody(args: Record<string, unknown>): Record<string, unknown> {
   const body: Record<string, unknown> = {};
   for (const key of STRATEGY_FIELDS) {
-    if (args[key] !== undefined && args[key] !== "") body[key] = args[key];
+    if (args[key] !== undefined && args[key] !== "") body[key] = strategyValue(key, args[key]);
   }
   return body;
 }
@@ -418,7 +460,7 @@ export const tools: ToolDef[] = [
     name: "create_liquidation_alert",
     title: "Create liquidation alert",
     description:
-      "Have Ironflow post Hyperliquid liquidations to the user's Discord channel, Slack channel, Telegram chat or HTTPS webhook as they happen (within seconds), filtered by market, side, size and wallet. It keeps running after the conversation: use it when the user wants to be told about liquidations, not just to see them now. Needs an API key (free key: 1 alert; Explorer 5; Builder 20). Give url (a Discord channel webhook from channel settings, Integrations, Webhooks, Copy Webhook URL; a Slack incoming webhook; or any public https URL) or telegram_chat (then tell the user to add the bot named in the result's setup to that chat). A plain webhook gets signed JSON, and its signing_secret appears only in this result, so pass it on. Then call test_liquidation_alert to check that it arrives.",
+      "Have Ironflow post Hyperliquid liquidations to the user's Discord channel, Slack channel, Telegram chat or HTTPS webhook as they happen (within seconds), filtered by market, side, size and wallet. It keeps running after the conversation: use it when the user wants to be told about liquidations, not just to see them now. Needs an API key (a free key works: 1 alert; Explorer 5; Builder 20). Give url (a Discord channel webhook from channel settings, Integrations, Webhooks, Copy Webhook URL; a Slack incoming webhook; or any public https URL) or telegram_chat (then tell the user to add the bot named in the result's setup to that chat). A plain webhook gets signed JSON, and its signing_secret appears only in this result, so pass it on. Then call test_liquidation_alert to check that it arrives.",
     inputSchema: {
       type: "object",
       properties: {
@@ -433,6 +475,7 @@ export const tools: ToolDef[] = [
       required: [],
     },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
+    needsKey: always,
     handler: async (args, api) => {
       const url = optionalString(args, "url", "");
       const telegram = optionalString(args, "telegram_chat", "");
@@ -456,21 +499,23 @@ export const tools: ToolDef[] = [
     name: "list_liquidation_alerts",
     title: "List liquidation alerts",
     description:
-      "The Hyperliquid liquidation alerts on this API key's account: where each posts (host only), its filter, whether it is active, failed deliveries in a row with the last error, liquidations sent so far, and how many alerts the tier allows. An alert is disabled after 20 failed deliveries in a row; test_liquidation_alert re-enables it once the destination works again.",
+      "Needs an API key (a free key works). The Hyperliquid liquidation alerts on this API key's account: where each posts (host only), its filter, whether it is active, failed deliveries in a row with the last error, liquidations sent so far, and how many alerts the tier allows. An alert is disabled after 20 failed deliveries in a row; test_liquidation_alert re-enables it once the destination works again.",
     inputSchema: { type: "object", properties: {}, required: [] },
+    needsKey: always,
     handler: async (_args, api) => JSON.stringify(await api.get("/v1/alerts"), null, 2),
   },
   {
     name: "test_liquidation_alert",
     title: "Test liquidation alert",
     description:
-      "Send a sample Hyperliquid liquidation, marked as a test, to an alert's destination now and report whether it arrived (delivered true or false, with the destination's answer). A delivered test switches a disabled alert back on. One test per alert every 10 seconds.",
+      "Needs an API key (a free key works). Send a sample Hyperliquid liquidation, marked as a test, to an alert's destination now and report whether it arrived (delivered true or false, with the destination's answer). A delivered test switches a disabled alert back on. One test per alert every 10 seconds.",
     inputSchema: {
       type: "object",
       properties: { id: { type: "string", description: "Alert id from create_liquidation_alert or list_liquidation_alerts" } },
       required: ["id"],
     },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
+    needsKey: always,
     handler: async (args, api) => {
       const id = alertId(args);
       return JSON.stringify(await api.post(`/v1/alerts/${id}/test`, {}), null, 2);
@@ -479,13 +524,14 @@ export const tools: ToolDef[] = [
   {
     name: "delete_liquidation_alert",
     title: "Delete liquidation alert",
-    description: "Stop and remove one Hyperliquid liquidation alert from this API key's account; nothing more is sent to its destination.",
+    description: "Needs an API key (a free key works). Stop and remove one Hyperliquid liquidation alert from this API key's account; nothing more is sent to its destination.",
     inputSchema: {
       type: "object",
       properties: { id: { type: "string", description: "Alert id from list_liquidation_alerts" } },
       required: ["id"],
     },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
+    needsKey: always,
     handler: async (args, api) => {
       const id = alertId(args);
       await api.del(`/v1/alerts/${id}`);
@@ -514,6 +560,7 @@ export const tools: ToolDef[] = [
       required: [],
     },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
+    needsKey: liveMode,
     handler: async (args, api) => {
       const body: Record<string, unknown> = {};
       for (const key of ["name", "size", "mode", "runtime", "note"]) {
@@ -529,7 +576,7 @@ export const tools: ToolDef[] = [
     name: "list_ironboxes",
     title: "List Ironboxes",
     description:
-      "The Ironboxes on this API key's account, the sandboxes where agents run and trade next to Hyperliquid: id, name, state (creating, running, stopped, deleted or error), size, mode, runtime and markets.",
+      "The Ironboxes on this API key's account, the sandboxes where agents run and trade next to Hyperliquid: id, name, state (creating, running, stopped, deleted or error), size, mode, runtime and markets. Without a key there are no saved boxes, and the answer says how to make a trial box with create_ironbox.",
     inputSchema: { type: "object", properties: {}, required: [] },
     handler: async (_args, api) => JSON.stringify(await api.get("/v1/ironbox"), null, 2),
   },
@@ -537,24 +584,26 @@ export const tools: ToolDef[] = [
     name: "get_ironbox",
     title: "Get Ironbox",
     description:
-      "One Ironbox by id: its state (creating, running, stopped, deleted or error), size, mode, runtime, Hyperliquid markets and region.",
+      "Needs an API key (a free key works). One Ironbox by id: its state (creating, running, stopped, deleted or error), size, mode, runtime, Hyperliquid markets and region.",
     inputSchema: {
       type: "object",
       properties: { id: { type: "string", description: "Ironbox id (ibx_...) from create_ironbox or list_ironboxes" } },
       required: ["id"],
     },
+    needsKey: always,
     handler: async (args, api) => JSON.stringify(await api.get(`/v1/ironbox/${ironboxId(args)}`), null, 2),
   },
   {
     name: "delete_ironbox",
     title: "Delete Ironbox",
-    description: "Stop and delete one Ironbox from this API key's account; the agent in it stops running on Hyperliquid.",
+    description: "Needs an API key (a free key works). Stop and delete one Ironbox from this API key's account; the agent in it stops running on Hyperliquid.",
     inputSchema: {
       type: "object",
       properties: { id: { type: "string", description: "Ironbox id (ibx_...) from list_ironboxes" } },
       required: ["id"],
     },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
+    needsKey: always,
     handler: async (args, api) => {
       const id = ironboxId(args);
       return JSON.stringify((await api.del(`/v1/ironbox/${id}`)) ?? { id, state: "deleted" }, null, 2);
@@ -781,7 +830,7 @@ export const tools: ToolDef[] = [
       type: "object",
       properties: {
         market: { type: "string", description: MARKET },
-        bucket_size: { type: "string", description: "Price bucket width: auto (default, about 0.25% of price, right for any coin) or a fixed 1, 5, 10, 50, 100, 500, 1000 or 5000" },
+        bucket_size: { type: "string", description: "Price bucket width: auto (default, about 0.25% of price, right for any coin) or a fixed 1, 5, 10, 50, 100, 500, 1000 or 5000 (a number works too)" },
       },
       required: ["market"],
     },
@@ -800,7 +849,7 @@ export const tools: ToolDef[] = [
       type: "object",
       properties: {
         market: { type: "string", description: MARKET },
-        bucket_size: { type: "string", description: "Price range width: auto (default, about 0.25% of price) or a number in the market's price units" },
+        bucket_size: { type: "string", description: "Price range width: auto (default, about 0.25% of price) or a number in the market's price units, as text or a number" },
         range_pct: { type: "number", description: "How far from the current price to cover, in percent. Default 20, max 50" },
         side: { type: "string", enum: ["both", "long", "short"], description: "Which side's liquidations. Default both" },
       },
