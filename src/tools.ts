@@ -53,11 +53,15 @@ function optionalNumber(args: Record<string, unknown>, key: string, defaultVal: 
   return Math.floor(n);
 }
 
+// optionalString also takes a finite number and passes it on as text:
+// agents send bucket_size 100 as often as "100" (opencode's first
+// get_liquidation_map call failed on it, 2026-11-11).
 function optionalString(args: Record<string, unknown>, key: string, defaultVal: string): string {
   const val = args[key];
   if (val === undefined || val === null) return defaultVal;
+  if (typeof val === "number" && Number.isFinite(val)) return String(val);
   if (typeof val !== "string") {
-    throw new Error(`"${key}" must be a string`);
+    throw new Error(`"${key}" must be a string or a number`);
   }
   return val;
 }
@@ -140,10 +144,26 @@ const STRATEGY_FIELDS = [
   "interval_minutes", "take_profit_pct", "repeat",
 ];
 
+// The engine reads the grid prices as text and the sizes, counts and
+// percentages as numbers; agents send either form for both.
+const STRATEGY_TEXT_FIELDS = new Set(["kind", "market", "side", "lower_px", "upper_px"]);
+const STRATEGY_FLAG_FIELDS = new Set(["repeat"]);
+
+function strategyValue(key: string, val: unknown): unknown {
+  if (STRATEGY_TEXT_FIELDS.has(key)) {
+    return typeof val === "number" && Number.isFinite(val) ? String(val) : val;
+  }
+  if (STRATEGY_FLAG_FIELDS.has(key)) {
+    return val === "true" ? true : val === "false" ? false : val;
+  }
+  if (typeof val === "string" && val.trim() !== "" && Number.isFinite(Number(val))) return Number(val);
+  return val;
+}
+
 function strategyBody(args: Record<string, unknown>): Record<string, unknown> {
   const body: Record<string, unknown> = {};
   for (const key of STRATEGY_FIELDS) {
-    if (args[key] !== undefined && args[key] !== "") body[key] = args[key];
+    if (args[key] !== undefined && args[key] !== "") body[key] = strategyValue(key, args[key]);
   }
   return body;
 }
@@ -781,7 +801,7 @@ export const tools: ToolDef[] = [
       type: "object",
       properties: {
         market: { type: "string", description: MARKET },
-        bucket_size: { type: "string", description: "Price bucket width: auto (default, about 0.25% of price, right for any coin) or a fixed 1, 5, 10, 50, 100, 500, 1000 or 5000" },
+        bucket_size: { type: "string", description: "Price bucket width: auto (default, about 0.25% of price, right for any coin) or a fixed 1, 5, 10, 50, 100, 500, 1000 or 5000 (a number works too)" },
       },
       required: ["market"],
     },
@@ -800,7 +820,7 @@ export const tools: ToolDef[] = [
       type: "object",
       properties: {
         market: { type: "string", description: MARKET },
-        bucket_size: { type: "string", description: "Price range width: auto (default, about 0.25% of price) or a number in the market's price units" },
+        bucket_size: { type: "string", description: "Price range width: auto (default, about 0.25% of price) or a number in the market's price units, as text or a number" },
         range_pct: { type: "number", description: "How far from the current price to cover, in percent. Default 20, max 50" },
         side: { type: "string", enum: ["both", "long", "short"], description: "Which side's liquidations. Default both" },
       },

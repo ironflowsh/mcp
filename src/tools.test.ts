@@ -139,8 +139,11 @@ describe("get_candles", () => {
     expect(api.getCandles).toHaveBeenCalledWith("ETH-PERP", "4h", "100");
   });
 
-  it("throws when interval is not a string", async () => {
-    await expect(tool.handler({ market: "ETH-PERP", interval: 60 }, mockApi())).rejects.toThrow('"interval" must be a string');
+  it("passes a number interval on as text for the API to judge, and refuses other types", async () => {
+    const api = mockApi();
+    await tool.handler({ market: "ETH-PERP", interval: 60 }, api);
+    expect(api.getCandles).toHaveBeenCalledWith("ETH-PERP", "60", "24");
+    await expect(tool.handler({ market: "ETH-PERP", interval: ["1h"] }, mockApi())).rejects.toThrow('"interval" must be a string or a number');
   });
 });
 
@@ -682,5 +685,42 @@ describe("paper box strategy tools", () => {
     const get = vi.fn().mockResolvedValue({ events: [], next_cursor: 9 });
     await findTool("get_box_activity").handler({ box, after: 9, limit: 50 }, mockApi({ get }));
     expect(get).toHaveBeenCalledWith(`/box/${secret}/activity`, { after: "9", limit: "50" });
+  });
+});
+
+describe("number-like parameters", () => {
+  // opencode's first get_liquidation_map call sent bucket_size 100 as a
+  // number and got '"bucket_size" must be a string' (2026-11-11).
+  it("get_liquidation_map takes bucket_size as a number or a string", async () => {
+    const getLiquidationMap = vi.fn().mockResolvedValue({ levels: [] });
+    await findTool("get_liquidation_map").handler({ market: "BTC-PERP", bucket_size: 100, range_pct: "15" }, mockApi({ getLiquidationMap }));
+    expect(getLiquidationMap).toHaveBeenCalledWith("BTC-PERP", "100", "15", "both");
+    await findTool("get_liquidation_map").handler({ market: "BTC-PERP", bucket_size: "250" }, mockApi({ getLiquidationMap }));
+    expect(getLiquidationMap).toHaveBeenLastCalledWith("BTC-PERP", "250", "20", "both");
+  });
+
+  it("get_liquidation_levels takes bucket_size as a number", async () => {
+    const getLiquidationLevels = vi.fn().mockResolvedValue({ data: [] });
+    await findTool("get_liquidation_levels").handler({ market: "BTC-PERP", bucket_size: 1000 }, mockApi({ getLiquidationLevels }));
+    expect(getLiquidationLevels).toHaveBeenCalledWith("BTC-PERP", "1000");
+  });
+
+  it("still refuses objects and non-finite numbers where a string is expected", async () => {
+    const getLiquidationMap = vi.fn();
+    await expect(findTool("get_liquidation_map").handler({ market: "BTC-PERP", bucket_size: { x: 1 } }, mockApi({ getLiquidationMap }))).rejects.toThrow("bucket_size");
+    await expect(findTool("get_liquidation_map").handler({ market: "BTC-PERP", bucket_size: Number.NaN }, mockApi({ getLiquidationMap }))).rejects.toThrow("bucket_size");
+    expect(getLiquidationMap).not.toHaveBeenCalled();
+  });
+
+  it("start_box_strategy sends grid prices as strings and numeric fields as numbers", async () => {
+    const secret = "ibxs_" + "cd".repeat(32);
+    const post = vi.fn().mockResolvedValue({ strategy: { id: "strat_1" } });
+    await findTool("start_box_strategy").handler(
+      { box: secret, kind: "grid", market: "BTC", lower_px: 95000, upper_px: "105000", grids: "10", size_usd: "500", max_loss_usd: 50 },
+      mockApi({ post })
+    );
+    expect(post).toHaveBeenCalledWith(`/box/${secret}/strategies`, {
+      kind: "grid", market: "BTC", lower_px: "95000", upper_px: "105000", grids: 10, size_usd: 500, max_loss_usd: 50,
+    });
   });
 });
