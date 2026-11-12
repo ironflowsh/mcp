@@ -72,19 +72,115 @@ describe("toolsets", () => {
     expect(client.getInstructions()).toContain("spin up its own Ironbox with create_ironbox");
   });
 
-  it("data hides the Ironbox tools and their instruction, and will not call them", async () => {
+  it("data hides the Ironbox and alert tools and their instructions, and will not call them", async () => {
     const outcomes: ToolOutcome[] = [];
     const post = vi.fn();
-    const client = await connect({ post }, outcomes, "data");
+    const del = vi.fn();
+    const client = await connect({ post, del }, outcomes, "data");
     const names = (await client.listTools()).tools.map((t) => t.name);
-    expect(names).toHaveLength(46);
-    expect(names.some((n) => n.includes("ironbox"))).toBe(false);
-    expect(names).toContain("create_liquidation_alert");
-    expect(client.getInstructions()).not.toContain("Ironbox");
-    const res = (await client.callTool({ name: "create_ironbox", arguments: {} })) as { isError?: boolean; content: { text: string }[] };
-    expect(res.isError).toBe(true);
-    expect(res.content[0].text).toBe("Unknown tool: create_ironbox");
+    expect(names).toHaveLength(42);
+    expect(names.some((n) => n.includes("ironbox") || n.includes("alert") || n.includes("box_"))).toBe(false);
+    const instructions = client.getInstructions() ?? "";
+    expect(instructions).not.toMatch(/Ironbox|alert|x402|pay per call|free key|ironflow\.sh\/key/i);
+    expect(instructions).toContain("Every tool only reads.");
+    expect(instructions).toContain("Keyless use allows 30 requests per minute, 300 per day and 24 hours of history.");
+    expect(client.getServerVersion()?.description).not.toMatch(/alert/i);
+    for (const name of ["create_ironbox", "create_liquidation_alert", "delete_liquidation_alert", "test_liquidation_alert"]) {
+      const res = (await client.callTool({ name, arguments: { id: "6f1c2a3b-0000-4000-8000-000000000000" } })) as {
+        isError?: boolean;
+        content: { text: string }[];
+      };
+      expect(res.isError, name).toBe(true);
+      expect(res.content[0].text).toBe(`Unknown tool: ${name}`);
+    }
     expect(post).not.toHaveBeenCalled();
+    expect(del).not.toHaveBeenCalled();
+  });
+
+  it("data lists every tool as read-only, with output schemas that sell nothing", async () => {
+    const client = await connect({}, [], "data");
+    const { tools } = await client.listTools();
+    for (const t of tools) {
+      expect(t.annotations?.readOnlyHint, t.name).toBe(true);
+      expect(t.annotations?.destructiveHint, t.name).not.toBe(true);
+      expect(t.annotations?.openWorldHint, t.name).toBe(true);
+      const schema = JSON.stringify(t.outputSchema);
+      expect(schema, t.name).not.toMatch(/free key|ironflow\.sh\/key|x402|\b(Explorer|Builder|Enterprise)\b/);
+      expect((t.outputSchema?.properties as Record<string, { description?: string }>).notice.description, t.name).toBe(
+        "Present when the API added a note: how a market name was read, or that data starts later than asked because of the history window"
+      );
+    }
+  });
+});
+
+describe("data toolset results", () => {
+  async function dataClient(response: () => Response): Promise<Client> {
+    vi.stubGlobal("fetch", vi.fn(async () => response()));
+    const server = createServer(new IronflowAPI("http://api"), "test", { toolset: "data" });
+    const [a, b] = InMemoryTransport.createLinkedPair();
+    await server.connect(a);
+    const client = new Client({ name: "test", version: "1" });
+    await client.connect(b);
+    return client;
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const json = (body: unknown, headers: Record<string, string> = {}, status = 200): Response =>
+    new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", ...headers } });
+
+  it("takes the key offer out of the API's notice and the body's", async () => {
+    const offer = "Keyless sample: the 10 largest levels within 10% of mark. A free key returns every level out to 50%: https://ironflow.sh/key?utm_source=api";
+    const client = await dataClient(() => json({ notice: offer, market: "BTC-PERP", levels: [] }, { "X-Ironflow-Notice": offer }));
+    const res = (await client.callTool({ name: "get_liquidation_map", arguments: { market: "BTC" } })) as {
+      content: { text: string }[];
+      structuredContent: Record<string, unknown>;
+    };
+    expect(res.structuredContent).toEqual({
+      notice: "Keyless sample: the 10 largest levels within 10% of mark.",
+      market: "BTC-PERP",
+      levels: [],
+    });
+    expect(res.content[0].text).not.toMatch(/free key|ironflow\.sh\/key/);
+  });
+
+  it("keeps the key offer in the default toolset", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => json({ data: [] }, { "X-Ironflow-Notice": "A free key reads them live: https://ironflow.sh/key" })));
+    const server = createServer(new IronflowAPI("http://api"), "test");
+    const [a, b] = InMemoryTransport.createLinkedPair();
+    await server.connect(a);
+    const client = new Client({ name: "test", version: "1" });
+    await client.connect(b);
+    const res = (await client.callTool({ name: "get_liquidations", arguments: { market: "BTC-PERP" } })) as {
+      structuredContent: Record<string, unknown>;
+    };
+    expect(res.structuredContent.notice).toBe("A free key reads them live: https://ironflow.sh/key");
+  });
+
+  it("errors keep the refusal and drop the key and payment offer", async () => {
+    const message =
+      'keyless access allows 300 requests per rolling 24 hours from one IP; the next one is allowed in 3 h (Retry-After). Get a free key for 60 requests per minute and 14 days of history, and send it as "Authorization: Bearer if_...": https://ironflow.sh/key?utm_source=api';
+    const client = await dataClient(() =>
+      json({ error: { code: "KEYLESS_DAILY_LIMIT", message, upgrade: { plan: "explorer" } } }, { "Retry-After": "10800", "PAYMENT-REQUIRED": "x" }, 402)
+    );
+    const res = (await client.callTool({ name: "get_liquidations", arguments: { market: "BTC-PERP" } })) as {
+      isError?: boolean;
+      content: { text: string }[];
+    };
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toBe(
+      "Error: Ironflow API error 402 KEYLESS_DAILY_LIMIT: keyless access allows 300 requests per rolling 24 hours from one IP; the next one is allowed in 3 h (Retry-After). Retry after 10800 s."
+    );
+  });
+
+  it("describe_data leaves out the plan table and keeps the caller's limits", async () => {
+    const client = await dataClient(() =>
+      json({ dialect: "clickhouse", tables: [], limits: { history_days: 1 }, tiers: [{ tier: "explorer", history_days: 90 }] })
+    );
+    const res = (await client.callTool({ name: "describe_data", arguments: {} })) as { structuredContent: Record<string, unknown> };
+    expect(res.structuredContent).toEqual({ dialect: "clickhouse", tables: [], limits: { history_days: 1 } });
   });
 });
 
