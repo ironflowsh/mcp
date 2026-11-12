@@ -9,7 +9,8 @@
 //
 // A key is optional. Send it as "Authorization: Bearer if_..." or, for
 // clients that cannot set headers, as ?key=if_... on the URL.
-// ?toolset=data serves every tool except the Ironbox ones.
+// https://mcp.ironflow.sh/data (or /mcp?toolset=data) serves the read-only
+// data tools only, for directory listings.
 //
 // Environment:
 //   PORT               listen port (default 8080)
@@ -27,7 +28,7 @@ import { createServer as createHttpServer, IncomingMessage, ServerResponse } fro
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { IronflowAPI } from "./api.js";
 import { discoverReply } from "./discover.js";
-import { clientIP, HttpError, readKey, readToolset } from "./request.js";
+import { clientIP, DATA_PATH, HttpError, readKey, readToolset } from "./request.js";
 import { createServer, packageVersion, type ToolOutcome } from "./server.js";
 import {
   callerHash,
@@ -183,8 +184,8 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
     res.writeHead(302, { Location: INFO_URL }).end();
     return;
   }
-  if (url.pathname !== MCP_PATH) {
-    sendJSON(res, 404, { error: "Not found. The MCP endpoint is /mcp" });
+  if (url.pathname !== MCP_PATH && url.pathname !== DATA_PATH) {
+    sendJSON(res, 404, { error: "Not found. The MCP endpoint is /mcp, or /data for the read-only data tools" });
     return;
   }
   if (req.method !== "POST") {

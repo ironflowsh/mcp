@@ -42,12 +42,22 @@ export function clientIP(req: IncomingMessage, trustProxy: boolean): string | un
   return first && IP_PATTERN.test(first) ? first : undefined;
 }
 
-// readToolset reads ?toolset= on the MCP URL: "data" serves every tool
-// except the Ironbox ones (for directory listings that take data tools
-// only), none or "all" serves every tool. Anything else is an error, so a
-// typo cannot list the tools the URL meant to hide.
+// DATA_PATH serves the data toolset without a query string. Some
+// directories and clients match or call a server by its address without
+// the query, so /data is the address to list where only data tools belong.
+export const DATA_PATH = "/data";
+
+// readToolset reads the toolset from the MCP URL: the /data path, or
+// ?toolset=data on /mcp, serves the read-only data tools (for directory
+// listings that take data tools only); /mcp alone or ?toolset=all serves
+// every tool. /data never serves more than the data tools. Anything else is
+// an error, so a typo cannot list the tools the URL meant to hide.
 export function readToolset(url: URL): Toolset {
   const raw = url.searchParams.get("toolset")?.trim().toLowerCase() ?? "";
+  if (url.pathname === DATA_PATH) {
+    if (raw === "" || raw === "data") return "data";
+    throw new HttpError(400, "The /data address serves the data tools only; leave toolset out");
+  }
   if (raw === "" || raw === "all") return "all";
   if (raw === "data") return "data";
   throw new HttpError(400, "Unknown toolset: use ?toolset=data for the data tools only, or leave it out for every tool");
