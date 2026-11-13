@@ -8,6 +8,8 @@ import { fileURLToPath } from "node:url";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import {
   CallToolRequestSchema,
+  GetPromptRequestSchema,
+  ListPromptsRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import type { IronflowAPI } from "./api.js";
@@ -15,6 +17,7 @@ import { fitToBudget } from "./budget.js";
 import { fitEnums } from "./enums.js";
 import { attachNotice, enumNotice } from "./notice.js";
 import { DATA_NOTICE, plainError, plainResult, plainSchema, plainText } from "./plain.js";
+import { getPrompt, listPrompts } from "./prompts.js";
 import { outputSchemas, type Schema } from "./schemas.js";
 import { keyRequiredText, type Toolset, toolsFor } from "./tools.js";
 
@@ -26,17 +29,20 @@ const DATA_DESCRIPTION =
   "Hyperliquid market data and wallet analytics from our own nodes: trades, funding, liquidations, open interest, wallet PnL and trader rankings. Native perps, HIP-3, HIP-4 and spot. Read-only, no API key needed.";
 
 // Server-level guidance the client shows the model alongside the tool list.
-// The data toolset (plain.ts) leaves out the alert, Ironbox, key and x402
-// sentences with the tools they are about.
-const NAMES =
-  "Markets take display symbols (BTC-PERP, xyz:NVDA-PERP, HYPE/USDC) or Hyperliquid names (BTC, @107, xyz:NVDA); list_markets with q finds a name. Times take Unix ms, Unix seconds, ISO 8601 or relative times (-7d, -24h, now).";
+// Clients that defer tool schemas (Claude Code's tool search) show the model
+// only these lines and the tool names, so they say when to use the tools and
+// name the first calls. The data toolset (plain.ts) leaves out the alert,
+// Ironbox, key and x402 sentences with the tools they are about.
+const SCOPE =
+  "Hyperliquid data from Ironflow's own nodes: prices, trades, candles, funding, open interest, liquidations and wallet analytics for perps, HIP-3 markets, HIP-4 outcomes and spot.";
+const WHEN = "Use these tools when the user asks about Hyperliquid prices, liquidations, funding, open interest or a wallet.";
 const WHERE_TO_START =
-  "Where to start: liquidations with get_liquidations (rows) or get_liquidation_summary (totals by market and window), and get_liquidation_map for where open positions would be liquidated if the price moved; a wallet with get_user_state (positions), get_user_pnl_series and get_user_funding; market moves with get_markets_snapshot, get_candles and get_open_interest_changes; who trades with get_top_traders and get_market_top_wallets.";
-const SQL =
-  "For anything the named tools do not cover, call describe_data and then run_query with ClickHouse SQL over the hl.* tables.";
+  "Good first calls: get_liquidation_summary (liquidation totals by market for a window), get_liquidation_map (where open positions would be liquidated if the price moved) and get_markets_snapshot (price, volume, open interest, funding and 24h change across markets). For a wallet, start with get_user_state. list_markets with q finds a market name.";
+const NOTICE = "A result can start with a notice; pass its next step on to the user.";
+const SQL = "For anything else call describe_data, then run_query with ClickHouse SQL over the hl.* tables.";
 const KEYLESS = "Keyless use allows 30 requests per minute, 300 per day and 24 hours of history";
-const DATA_INSTRUCTIONS = `Hyperliquid market data from Ironflow's own nodes: trades, candles, funding, open interest, liquidations, mark prices, market snapshots and wallet analytics for native perps, HIP-3 builder markets, HIP-4 outcomes and spot. Every tool only reads. ${NAMES} ${WHERE_TO_START} A result that starts with a notice says how a market name was read or that the data starts later than asked; pass it on to the user. ${SQL} ${KEYLESS}.`;
-const ALL_INSTRUCTIONS = `Hyperliquid market data from Ironflow's own nodes, and liquidation alerts: trades, candles, funding, open interest, liquidations, mark prices, market snapshots and wallet analytics for native perps, HIP-3 builder markets, HIP-4 outcomes and spot. ${NAMES} ${WHERE_TO_START} To have liquidations posted to the user's Discord, Slack, Telegram or webhook as they happen, use create_liquidation_alert, then test_liquidation_alert (the alert tools need an API key, a free key works). An agent can spin up its own Ironbox with create_ironbox to trade on paper next to Hyperliquid. It needs no key; get_ironbox and delete_ironbox need one. A result that starts with a notice says how a market name was read or that the data starts later than asked; pass its next step on to the user. ${SQL} ${KEYLESS}; a free key from https://ironflow.sh/key raises that to 60 per minute and 14 days. Agents with a USDC wallet on Base can also pay per call with x402, from $0.001, with no key: https://docs.ironflow.sh/guides/pay-per-call.`;
+const DATA_INSTRUCTIONS = `${SCOPE} Every tool only reads. ${WHEN} ${WHERE_TO_START} ${NOTICE} ${SQL} ${KEYLESS}.`;
+const ALL_INSTRUCTIONS = `${SCOPE} ${WHEN} ${WHERE_TO_START} ${NOTICE} ${SQL} To post liquidations to the user's Discord, Slack, Telegram or webhook as they happen, use create_liquidation_alert (needs an API key, a free key works), then test_liquidation_alert. An agent can spin up its own Ironbox with create_ironbox to trade on paper next to Hyperliquid, with no key. ${KEYLESS}; a free key from https://ironflow.sh/key raises that to 60 per minute and 14 days. Agents with a USDC wallet on Base can also pay per call with x402, from $0.001, with no key: https://docs.ironflow.sh/guides/pay-per-call.`;
 export const instructions = (toolset: Toolset): string => (toolset === "data" ? DATA_INSTRUCTIONS : ALL_INSTRUCTIONS);
 
 // Reads the package version from package.json so MCP clients see the real
@@ -97,7 +103,7 @@ export function createServer(api: IronflowAPI, version: string, options: ServerO
         { src: "https://ironflow.sh/favicon.svg", mimeType: "image/svg+xml", sizes: ["any"] },
       ],
     },
-    { capabilities: { tools: {} }, instructions: instructions(toolset) }
+    { capabilities: { tools: {}, prompts: {} }, instructions: instructions(toolset) }
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
@@ -114,6 +120,13 @@ export function createServer(api: IronflowAPI, version: string, options: ServerO
       annotations: { title: t.title, ...(t.annotations ?? { readOnlyHint: true }), openWorldHint: true },
     })),
   }));
+
+  // Ready-made starts (prompts.ts), the same in both toolsets: each one
+  // only asks for read-only tool calls.
+  server.setRequestHandler(ListPromptsRequestSchema, async () => ({ prompts: listPrompts() }));
+  server.setRequestHandler(GetPromptRequestSchema, async (request) =>
+    getPrompt(request.params.name, request.params.arguments)
+  );
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const result = await callTool(request.params.name, request.params.arguments);

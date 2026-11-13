@@ -92,13 +92,15 @@ async function readBody(req: IncomingMessage): Promise<unknown> {
 }
 
 // describeRPC names what a request did for the access log, without keys or
-// IPs. Tool arguments are logged separately (args).
+// IPs, with the tool or prompt it asked for. Tool arguments are logged
+// separately (args).
 function describeRPC(body: unknown): string {
   const msgs = Array.isArray(body) ? body : [body];
   return msgs
     .map((m) => {
       const msg = m as { method?: string; params?: { name?: string } };
-      return msg.method === "tools/call" ? `tools/call:${msg.params?.name}` : msg.method ?? "?";
+      const named = msg.method === "tools/call" || msg.method === "prompts/get";
+      return named ? `${msg.method}:${msg.params?.name}` : msg.method ?? "?";
     })
     .join(",");
 }
