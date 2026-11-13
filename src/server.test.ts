@@ -3,7 +3,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createServer, type ToolOutcome } from "./server.js";
 import { IronflowAPI } from "./api.js";
-import type { Toolset } from "./tools.js";
+import { ALERT_TOOLS, IRONBOX_TOOLS, type Toolset } from "./tools.js";
 
 async function connect(api: Partial<IronflowAPI>, outcomes: ToolOutcome[], toolset?: Toolset): Promise<Client> {
   const stub = { notice: () => "", hasKey: () => true, ...api, withContext: () => stub } as unknown as IronflowAPI;
@@ -64,6 +64,49 @@ describe("tool listing", () => {
   });
 });
 
+describe("first contact", () => {
+  const FIRST_CALLS = ["get_liquidation_summary", "get_liquidation_map", "get_markets_snapshot", "get_user_state"];
+
+  it.each(["all", "data"] as Toolset[])("%s: instructions say when to use the tools and name the first calls", async (toolset) => {
+    const client = await connect({}, [], toolset);
+    const instructions = client.getInstructions() ?? "";
+    expect(instructions).toContain("Use these tools when the user asks about Hyperliquid");
+    for (const name of FIRST_CALLS) expect(instructions, name).toContain(name);
+    // Older Claude Code builds cut server instructions at 2 KB.
+    expect(instructions.length).toBeLessThan(2048);
+    expect(instructions).not.toContain("—");
+  });
+
+  it.each(["all", "data"] as Toolset[])("%s: lists the first calls at the top", async (toolset) => {
+    const client = await connect({}, [], toolset);
+    const names = (await client.listTools()).tools.map((t) => t.name);
+    // Some clients pass only the first 40 tools to the model.
+    for (const name of [...FIRST_CALLS, "list_markets", "describe_data", "run_query"]) {
+      expect(names.indexOf(name), name).toBeGreaterThanOrEqual(0);
+      expect(names.indexOf(name), name).toBeLessThan(16);
+    }
+  });
+
+  it("lists the alert and Ironbox tools last", async () => {
+    const client = await connect({}, []);
+    const names = (await client.listTools()).tools.map((t) => t.name);
+    expect(names.slice(-12)).toEqual([...ALERT_TOOLS, ...IRONBOX_TOOLS]);
+  });
+
+  it.each(["all", "data"] as Toolset[])("%s: offers prompts a client can show as starts", async (toolset) => {
+    const client = await connect({}, [], toolset);
+    expect(client.getServerCapabilities()?.prompts).toBeDefined();
+    const { prompts } = await client.listPrompts();
+    expect(prompts.map((p) => p.name)).toContain("liquidation_map");
+    const res = await client.getPrompt({ name: "liquidation_map", arguments: { market: "ETH" } });
+    expect(res.messages[0]).toEqual({
+      role: "user",
+      content: { type: "text", text: expect.stringContaining("get_liquidation_map with market ETH") },
+    });
+    await expect(client.getPrompt({ name: "wallet_check", arguments: {} })).rejects.toThrow(/needs address/);
+  });
+});
+
 describe("toolsets", () => {
   it("serves the Ironbox tools and their instruction by default", async () => {
     const client = await connect({}, []);
@@ -107,7 +150,7 @@ describe("toolsets", () => {
       const schema = JSON.stringify(t.outputSchema);
       expect(schema, t.name).not.toMatch(/free key|ironflow\.sh\/key|x402|\b(Explorer|Builder|Enterprise)\b/);
       expect((t.outputSchema?.properties as Record<string, { description?: string }>).notice.description, t.name).toBe(
-        "Present when the API added a note: how a market name was read, or that data starts later than asked because of the history window"
+        "A note from the API: how a market name was read, or why data starts later than asked"
       );
     }
   });

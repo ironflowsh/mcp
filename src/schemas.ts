@@ -829,7 +829,7 @@ const toolSchemas: Record<string, Schema> = {
 // something beside the data: how a Hyperliquid name was read, that the data
 // starts later than asked (the tier's history window), or a next step.
 const NOTICE = d(
-  "Present when the API added a note: how a market name was read, that data starts later than asked because of the history window, or a next step such as a free key"
+  "A note from the API: how a market name was read, why data starts later than asked, or a next step such as a free key"
 );
 
 

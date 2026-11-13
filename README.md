@@ -98,6 +98,8 @@ To host the HTTP server yourself: `npx -y -p @ironflowsh/mcp ironflow-mcp-http` 
 
 **Ironbox**: `create_ironbox` spins up a secure sandbox next to Hyperliquid where an agent trades on paper. With no key it makes a 24-hour trial paper box; a free key keeps a box. `start_box_strategy`, `list_box_strategies`, `stop_box_strategy` and `get_box_activity` run breakout, grid and DCA strategies on a paper box with no client connected, and need only its URL. `get_ironbox` and `delete_ironbox` need a key; `list_ironboxes` without a key says how to make a trial box. Called without a key, a tool that needs one answers with the free key link instead of calling the API. `https://mcp.ironflow.sh/data` serves only the 42 read-only data tools, without the alert and Ironbox tools.
 
+**Prompts:** `biggest_liquidations`, `liquidation_map`, `market_movers` and `wallet_check` are ready-made starts. Claude Code shows them as slash commands; other clients list them in a prompt menu. Each asks only for read-only tools, on both addresses.
+
 Markets can be given as display symbols (`BTC-PERP`, `xyz:NVDA-PERP`, `HYPE/USDC`) or Hyperliquid names (`BTC`, `@107`, `xyz:NVDA`), and times as Unix ms, Unix seconds, ISO 8601 or relative to now (`-7d`, `-24h`, `now`). When the API reads a name, or serves a window that starts later than asked because of the key's history limit, the result starts with a `notice` saying so. Fill history starts on 25 May 2025. There is no order book, order status or streaming tool; for live feeds the REST API has `/v1/liquidations/stream` and `/v1/trades/stream` (Server-Sent Events).
 
 ## Configuration

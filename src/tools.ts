@@ -209,7 +209,8 @@ const time = (bound: "start" | "end", extra = "") =>
 
 // ─── Tools ──────────────────────────────────────────────────────────────────
 
-export const tools: ToolDef[] = [
+// Written in the order they were added; tools (below) is the listing order.
+const definitions: ToolDef[] = [
   {
     name: "describe_data",
     title: "Describe SQL tables",
@@ -458,7 +459,7 @@ export const tools: ToolDef[] = [
     name: "create_liquidation_alert",
     title: "Create liquidation alert",
     description:
-      "Have Ironflow post Hyperliquid liquidations to the user's Discord channel, Slack channel, Telegram chat or HTTPS webhook as they happen (within seconds), filtered by market, side, size and wallet. It keeps running after the conversation: use it when the user wants to be told about liquidations, not just to see them now. Needs an API key (a free key works: 1 alert; Explorer 5; Builder 20). Give url (a Discord channel webhook from channel settings, Integrations, Webhooks, Copy Webhook URL; a Slack incoming webhook; or any public https URL) or telegram_chat (then tell the user to add the bot named in the result's setup to that chat). A plain webhook gets signed JSON, and its signing_secret appears only in this result, so pass it on. Then call test_liquidation_alert to check that it arrives.",
+      "Have Ironflow post Hyperliquid liquidations to the user's Discord, Slack, Telegram or HTTPS webhook within seconds, filtered by market, side, size and wallet. It keeps running after the conversation: use it when the user wants to be told about liquidations, not just to see them now. Needs an API key (a free key works). Give url (a Discord channel webhook, a Slack incoming webhook or any public https URL) or telegram_chat (then tell the user to add the bot named in the result's setup). A plain webhook gets signed JSON; its signing_secret appears only in this result, so pass it on. Then call test_liquidation_alert.",
     inputSchema: {
       type: "object",
       properties: {
@@ -842,7 +843,7 @@ export const tools: ToolDef[] = [
   {
     name: "get_liquidation_map",
     title: "Liquidation map",
-    description: "Where open positions on a Hyperliquid perp would be liquidated if the price moved: notional (size x liquidation price) by price range, longs below the current price and shorts above, with running totals from the price outward. Built from every open position in our node's latest state snapshot, about every 12 minutes (snapshot.age_s says how old). Cross-margin prices assume the account's other positions stay at mark, so a real move that drags correlated markets liquidates earlier; portfolio-margin accounts use Hyperliquid's own liquidation price. For liquidations that already happened use get_liquidation_levels. Without a key you get the 10 largest ranges within 10% of the price; any key, including a free one (https://ironflow.sh/key), returns every range.",
+    description: "Where open positions on a Hyperliquid perp would be liquidated if the price moved: notional (size x liquidation price) by price range, longs below the current price and shorts above, with running totals from the price outward. Built from every open position in our node's latest snapshot, about every 12 minutes (snapshot.age_s says how old). Cross-margin prices assume the account's other positions stay at mark. For liquidations that already happened use get_liquidation_levels. Without a key you get the 10 largest ranges within 10% of the price; any key, including a free one (https://ironflow.sh/key), returns every range.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1266,7 +1267,7 @@ export const tools: ToolDef[] = [
     name: "get_early_movers",
     title: "Early movers",
     description:
-      "Wallets whose large orders (at least $10k) on one Hyperliquid market tended to come before price moved their way within 30 minutes, over the last 7 or 30 days. Per wallet: the number of scored orders, their total notional, a lead score (notional-weighted average 30-minute move in the order's direction, in basis points), a hit rate (share of orders followed by a move their way), the last order time and the share of its large orders cancelled without a fill. Needs at least 5 scored orders per wallet; the response states the formulas. Use it to find wallets worth watching on one market, then check them with get_trader_profile or get_user_state. Past activity does not predict future results.",
+      "Wallets whose large orders (at least $10k) on one Hyperliquid market tended to come before price moved their way within 30 minutes, over the last 7 or 30 days. Per wallet: scored orders, notional, a lead score (notional-weighted 30-minute move in the order's direction, in basis points), hit rate, last order time and the share cancelled without a fill. At least 5 scored orders per wallet; the response states the formulas. Check the wallets with get_trader_profile or get_user_state. Past activity does not predict future results.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1447,6 +1448,30 @@ export const ALERT_TOOLS = [
 ];
 
 const NOT_DATA = new Set([...IRONBOX_TOOLS, ...ALERT_TOOLS]);
+
+// tools/list order. The tools the server instructions name come first, then
+// the other read tools, the status tools, and the alert and Ironbox tools
+// last. Some clients pass only the first tools of a long list to the model
+// (Cursor's limit was 40), and a model reads the top of the list first.
+const FIRST = [
+  "get_liquidation_summary", "get_liquidations", "get_liquidation_map", "get_markets_snapshot",
+  "get_price", "get_candles", "get_funding_rates", "get_open_interest_changes",
+  "get_user_state", "get_user_pnl_series", "get_user_funding", "get_top_traders",
+  "get_market_top_wallets", "list_markets", "describe_data", "run_query",
+];
+const LAST = ["get_status", "get_status_metrics", "get_status_history", ...ALERT_TOOLS, ...IRONBOX_TOOLS];
+
+function listingOrder(defs: ToolDef[]): ToolDef[] {
+  const rank = (name: string): number => {
+    const first = FIRST.indexOf(name);
+    if (first >= 0) return first;
+    const last = LAST.indexOf(name);
+    return last >= 0 ? FIRST.length + defs.length + last : FIRST.length + defs.findIndex((t) => t.name === name);
+  };
+  return [...defs].sort((a, b) => rank(a.name) - rank(b.name));
+}
+
+export const tools: ToolDef[] = listingOrder(definitions);
 
 // isDataTool: a tool the data toolset serves. Any tool that says it changes
 // something (readOnlyHint false) is left out too, so a new write tool can

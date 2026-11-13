@@ -77,7 +77,7 @@ export function plainSchema<T>(schema: T): T {
 
 // The notice field of every output schema, worded for the data toolset.
 export const DATA_NOTICE: Schema = {
-  description: "Present when the API added a note: how a market name was read, or that data starts later than asked because of the history window",
+  description: "A note from the API: how a market name was read, or why data starts later than asked",
 };
 
 // Top-level result fields that only offer plans or payment.
