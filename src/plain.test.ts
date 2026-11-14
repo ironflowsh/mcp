@@ -10,7 +10,9 @@ const MAP_SAMPLE =
 const LEVELS_SAMPLE =
   "Keyless sample: the 10 busiest price levels in the last 24 hours. A free key returns every level and 14 days of history: https://ironflow.sh/key?utm_source=api. These are past liquidations; for where open positions would be liquidated next, GET /v1/liquidations/map?market=...";
 const DAILY_LIMIT =
-  'Error: Ironflow API error 402 KEYLESS_DAILY_LIMIT: keyless access allows 300 requests per rolling 24 hours from one IP; the next one is allowed in 3 h 20 min (Retry-After). Get a free key for 60 requests per minute and 14 days of history, and send it as "Authorization: Bearer if_...": https://ironflow.sh/key?utm_source=api, or POST https://api.ironflow.sh/v1/keys with {"email": "you@example.com"} (the key is emailed to that address, never returned, so a person has to open the email). Or stop polling: the live stream pushes each row as it lands, with no daily limit (one stream per IP without a key): GET /v1/liquidations/stream';
+  'Error: Ironflow API error 402 KEYLESS_DAILY_LIMIT: keyless access allows 100 credits per rolling 24 hours from one IP; the next call is allowed in 3 h 20 min (Retry-After). A read costs 1 credit, analytics 5, SQL 10 and a stream 1 a minute: https://docs.ironflow.sh/concepts/rate-limits. Get a free key for 1,000 credits a day, 60 requests per minute and 14 days of history, and send it as "Authorization: Bearer if_...": https://ironflow.sh/key?utm_source=api, or POST https://api.ironflow.sh/v1/keys with {"email": "you@example.com"} (the key is emailed to that address, never returned, so a person has to open the email). Instead of polling, the live stream pushes each row as it lands for 1 credit a minute: GET https://api.ironflow.sh/v1/liquidations/stream';
+const DAILY_QUOTA =
+  "Error: Ironflow API error 429 DAILY_QUOTA_EXCEEDED: This call costs 5 credits, and this account (free plan, all its keys together) has 3 of its 1,000 credits left for today. They come back at 00:00 UTC (Retry-After). A read costs 1 credit, analytics 5, SQL 10 and a stream 1 a minute: https://docs.ironflow.sh/concepts/rate-limits. Explorer has 25,000 credits a day and no monthly cap, 49 USDC per 30 days: https://ironflow.sh/upgrade?plan=explorer. Calls paid one by one with x402 cost no credits and keep working: send them to the same path under https://api.ironflow.sh/x402/v1/, https://docs.ironflow.sh/guides/pay-per-call Retry after 3600 s.";
 const FOUNDING =
   "Founding member: Explorer limits for 19 USDC per 30 days, price kept while you renew, first 50 accounts: https://ironflow.sh/upgrade?utm_source=api&plan=founding";
 const X402 =
@@ -49,7 +51,13 @@ describe("plainText", () => {
 describe("plainError", () => {
   it("keeps the refusal and its timing, without the key offer", () => {
     expect(plainError(DAILY_LIMIT)).toBe(
-      "Error: Ironflow API error 402 KEYLESS_DAILY_LIMIT: keyless access allows 300 requests per rolling 24 hours from one IP; the next one is allowed in 3 h 20 min (Retry-After). Or stop polling: the live stream pushes each row as it lands, with no daily limit (one stream per IP without a key): GET /v1/liquidations/stream"
+      "Error: Ironflow API error 402 KEYLESS_DAILY_LIMIT: keyless access allows 100 credits per rolling 24 hours from one IP; the next call is allowed in 3 h 20 min (Retry-After). A read costs 1 credit, analytics 5, SQL 10 and a stream 1 a minute: https://docs.ironflow.sh/concepts/rate-limits. Instead of polling, the live stream pushes each row as it lands for 1 credit a minute: GET https://api.ironflow.sh/v1/liquidations/stream"
+    );
+  });
+
+  it("keeps a key's credits left and when they come back, without the plan and x402 offers", () => {
+    expect(plainError(DAILY_QUOTA)).toBe(
+      "Error: Ironflow API error 429 DAILY_QUOTA_EXCEEDED: This call costs 5 credits, and this account (free plan, all its keys together) has 3 of its 1,000 credits left for today. They come back at 00:00 UTC (Retry-After). A read costs 1 credit, analytics 5, SQL 10 and a stream 1 a minute: https://docs.ironflow.sh/concepts/rate-limits. Retry after 3600 s."
     );
   });
 

@@ -8,7 +8,7 @@ MCP server for [Ironflow](https://ironflow.sh), the agent cloud for Hyperliquid.
 - 4 manage liquidation alerts that Ironflow posts to your Discord, Slack, Telegram or webhook.
 - 8 run [Ironbox](https://ironflow.sh/ironbox), a cloud sandbox for trading agents next to Hyperliquid. Test a Hyperliquid trading bot on a paper account with 10,000 USD and live prices, or run breakout, grid and DCA strategies on it. A paper box never places a real order.
 
-No API key needed to start: keyless calls get 30 requests per minute, 300 per day and 24 hours of history. A free key from [ironflow.sh/key](https://ironflow.sh/key) gives 60 requests per minute and 14 days. Agents with a USDC wallet on Base can also pay per call with x402, from $0.001 and with no key ([pay per call](https://docs.ironflow.sh/guides/pay-per-call)).
+No API key needed to start: keyless calls get 30 requests a minute, 100 credits a day and 24 hours of history. A free key from [ironflow.sh/key](https://ironflow.sh/key) gives 60 requests a minute, 1,000 credits a day and 14 days. A read costs 1 credit, analytics 5 and SQL 10 (see [Limits](#limits)). Agents with a USDC wallet on Base can also pay per call with x402, from $0.001, with no key and no credits ([pay per call](https://docs.ironflow.sh/guides/pay-per-call)).
 
 ## Install
 
@@ -45,7 +45,7 @@ code --add-mcp '{"name":"ironflow","type":"http","url":"https://mcp.ironflow.sh/
 
 ### With a free key
 
-Send it as `Authorization: Bearer if_your_api_key`, or as `?key=if_your_api_key` on the URL for clients that cannot set headers.
+Get one at [ironflow.sh/key](https://ironflow.sh/key), or `POST https://api.ironflow.sh/v1/keys` with `{"email": "you@example.com"}`; the key is emailed to you. Send it as `Authorization: Bearer if_your_api_key`, or as `?key=if_your_api_key` on the URL for clients that cannot set headers.
 
 ```bash
 claude mcp add --transport http ironflow https://mcp.ironflow.sh/mcp \
@@ -80,7 +80,7 @@ To host the HTTP server yourself: `npx -y -p @ironflowsh/mcp ironflow-mcp-http` 
 
 ## Tools
 
-**Ask anything (SQL):** `describe_data` lists the queryable tables, columns and example queries; `run_query` runs one read-only ClickHouse SELECT over them (every fill, per-wallet daily totals, behaviour labels, funding, mark and oracle prices, open interest, liquidations, builder-code fills, transfers, vault flows); `get_wallet_behavior` returns 30-day trading-style labels per wallet. Keyless queries see the last 24 hours; a free key sees 30 days.
+**Ask anything (SQL):** `describe_data` lists the queryable tables, columns and example queries; `run_query` runs one read-only ClickHouse SELECT over them (every fill, per-wallet daily totals, behaviour labels, funding, mark and oracle prices, open interest, liquidations, builder-code fills, transfers, vault flows); `get_wallet_behavior` returns 30-day trading-style labels per wallet. A query costs 10 credits and `describe_data` none. Keyless queries see the last 24 hours; a free key sees 30 days.
 
 **Market data:** `get_price`, `get_recent_trades`, `get_candles`, `get_funding_rates`, `get_open_interest`, `get_open_interest_changes`, `get_premium`, `get_outcome_markets`, `get_liquidations`, `get_liquidation_summary`, `get_auto_deleveraging`, `get_fills`, `get_mark_prices`, `get_vault_operations`, `list_markets`, `get_markets_snapshot`
 
@@ -100,7 +100,20 @@ To host the HTTP server yourself: `npx -y -p @ironflowsh/mcp ironflow-mcp-http` 
 
 **Prompts:** `biggest_liquidations`, `liquidation_map`, `market_movers` and `wallet_check` are ready-made starts. Claude Code shows them as slash commands; other clients list them in a prompt menu. Each asks only for read-only tools, on both addresses.
 
-Markets can be given as display symbols (`BTC-PERP`, `xyz:NVDA-PERP`, `HYPE/USDC`) or Hyperliquid names (`BTC`, `@107`, `xyz:NVDA`), and times as Unix ms, Unix seconds, ISO 8601 or relative to now (`-7d`, `-24h`, `now`). When the API reads a name, or serves a window that starts later than asked because of the key's history limit, the result starts with a `notice` saying so. Fill history starts on 25 May 2025. There is no order book, order status or streaming tool; for live feeds the REST API has `/v1/liquidations/stream` and `/v1/trades/stream` (Server-Sent Events).
+Markets can be given as display symbols (`BTC-PERP`, `xyz:NVDA-PERP`, `HYPE/USDC`) or Hyperliquid names (`BTC`, `@107`, `xyz:NVDA`), and times as Unix ms, Unix seconds, ISO 8601 or relative to now (`-7d`, `-24h`, `now`). When the API reads a name, or serves a window that starts later than asked because of the key's history limit, the result starts with a `notice` saying so. Fill history starts on 25 May 2025. There is no order book, order status or streaming tool; for live feeds the REST API has `/v1/liquidations/stream` and `/v1/trades/stream` (Server-Sent Events, 1 credit to open and 1 a minute).
+
+## Limits
+
+Every call costs credits: a read 1, analytics 5 (such as the liquidation map and summary and wallet analytics), SQL 10. Status and `describe_data` cost nothing.
+
+| | Requests a minute | Credits | History |
+|---|---|---|---|
+| No key | 30 | 100 a day per IP (rolling 24 hours) | 24 hours |
+| Free key | 60 | 1,000 a day and 3,000 a month | 14 days |
+| Explorer, 49 USDC per 30 days | 100 | 25,000 a day | 90 days |
+| Builder, 149 USDC per 30 days | 1,000 | 250,000 a day | 1 year |
+
+Enterprise has no credit cap. A keyless app that names itself in its `User-Agent` gets 300 credits a day across all its IPs. Key credits count per account, all its keys together, over the UTC day and, on a free key, the UTC month. Past them a tool returns the API's error: `KEYLESS_DAILY_LIMIT` without a key, `DAILY_QUOTA_EXCEEDED` (back at 00:00 UTC) or `MONTHLY_QUOTA_EXCEEDED` (free keys, back on the 1st at 00:00 UTC) with one. Plans: [ironflow.sh/upgrade](https://ironflow.sh/upgrade). Calls paid one by one with [x402](https://docs.ironflow.sh/guides/pay-per-call) (USDC on Base, from $0.001 a call, no key) cost no credits, have free key limits and are for personal use. Every limit: [docs.ironflow.sh/concepts/rate-limits](https://docs.ironflow.sh/concepts/rate-limits).
 
 ## Configuration
 
