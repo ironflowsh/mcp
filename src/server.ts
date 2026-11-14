@@ -40,9 +40,11 @@ const WHERE_TO_START =
   "Good first calls: get_liquidation_summary (liquidation totals by market for a window), get_liquidation_map (where open positions would be liquidated if the price moved) and get_markets_snapshot (price, volume, open interest, funding and 24h change across markets). For a wallet, start with get_user_state. list_markets with q finds a market name.";
 const NOTICE = "A result can start with a notice; pass its next step on to the user.";
 const SQL = "For anything else call describe_data, then run_query with ClickHouse SQL over the hl.* tables.";
-const KEYLESS = "Keyless use allows 30 requests per minute, 300 per day and 24 hours of history";
-const DATA_INSTRUCTIONS = `${SCOPE} Every tool only reads. ${WHEN} ${WHERE_TO_START} ${NOTICE} ${SQL} ${KEYLESS}.`;
-const ALL_INSTRUCTIONS = `${SCOPE} ${WHEN} ${WHERE_TO_START} ${NOTICE} ${SQL} To post liquidations to the user's Discord, Slack, Telegram or webhook as they happen, use create_liquidation_alert (needs an API key, a free key works), then test_liquidation_alert. An agent can spin up its own Ironbox with create_ironbox to trade on paper next to Hyperliquid, with no key. ${KEYLESS}; a free key from https://ironflow.sh/key raises that to 60 per minute and 14 days. Agents with a USDC wallet on Base can also pay per call with x402, from $0.001, with no key: https://docs.ironflow.sh/guides/pay-per-call.`;
+const CREDITS = "Each call costs credits: 1 for a read, 5 for analytics, 10 for run_query, none for describe_data or status.";
+const KEYLESS = "Keyless use allows 30 requests a minute, 100 credits a day and 24 hours of history";
+const LIMITS = "Limits: https://docs.ironflow.sh/concepts/rate-limits.";
+const DATA_INSTRUCTIONS = `${SCOPE} Every tool only reads. ${WHEN} ${WHERE_TO_START} ${NOTICE} ${SQL} ${CREDITS} ${KEYLESS}. ${LIMITS}`;
+const ALL_INSTRUCTIONS = `${SCOPE} ${WHEN} ${WHERE_TO_START} ${NOTICE} ${SQL} To post liquidations to the user's Discord, Slack, Telegram or webhook as they happen, use create_liquidation_alert (needs an API key, a free key works), then test_liquidation_alert. An agent can spin up its own Ironbox with create_ironbox to trade on paper next to Hyperliquid, with no key. ${CREDITS} ${KEYLESS}; a free key from https://ironflow.sh/key raises that to 60 a minute, 1,000 credits a day (3,000 a month) and 14 days. ${LIMITS} Agents with a USDC wallet on Base can also pay per call with x402, from $0.001, with no key and no credits: https://docs.ironflow.sh/guides/pay-per-call.`;
 export const instructions = (toolset: Toolset): string => (toolset === "data" ? DATA_INSTRUCTIONS : ALL_INSTRUCTIONS);
 
 // Reads the package version from package.json so MCP clients see the real

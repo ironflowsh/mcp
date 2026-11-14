@@ -75,6 +75,17 @@ describe("first contact", () => {
     // Older Claude Code builds cut server instructions at 2 KB.
     expect(instructions.length).toBeLessThan(2048);
     expect(instructions).not.toContain("—");
+    // Limits are in credits since 0.19.3; requests a day are gone.
+    expect(instructions).toContain("100 credits a day");
+    expect(instructions).toContain("https://docs.ironflow.sh/concepts/rate-limits");
+    expect(instructions).not.toMatch(/\bper day\b|300 a day|requests a day/);
+  });
+
+  it("all: names the free key's credits", async () => {
+    const client = await connect({}, []);
+    expect(client.getInstructions()).toContain(
+      "a free key from https://ironflow.sh/key raises that to 60 a minute, 1,000 credits a day (3,000 a month) and 14 days."
+    );
   });
 
   it.each(["all", "data"] as Toolset[])("%s: lists the first calls at the top", async (toolset) => {
@@ -126,7 +137,9 @@ describe("toolsets", () => {
     const instructions = client.getInstructions() ?? "";
     expect(instructions).not.toMatch(/Ironbox|alert|x402|pay per call|free key|ironflow\.sh\/key/i);
     expect(instructions).toContain("Every tool only reads.");
-    expect(instructions).toContain("Keyless use allows 30 requests per minute, 300 per day and 24 hours of history.");
+    expect(instructions).toContain(
+      "Each call costs credits: 1 for a read, 5 for analytics, 10 for run_query, none for describe_data or status. Keyless use allows 30 requests a minute, 100 credits a day and 24 hours of history. Limits: https://docs.ironflow.sh/concepts/rate-limits."
+    );
     expect(client.getServerVersion()?.description).not.toMatch(/alert/i);
     for (const name of ["create_ironbox", "create_liquidation_alert", "delete_liquidation_alert", "test_liquidation_alert"]) {
       const res = (await client.callTool({ name, arguments: { id: "6f1c2a3b-0000-4000-8000-000000000000" } })) as {
@@ -204,7 +217,7 @@ describe("data toolset results", () => {
 
   it("errors keep the refusal and drop the key and payment offer", async () => {
     const message =
-      'keyless access allows 300 requests per rolling 24 hours from one IP; the next one is allowed in 3 h (Retry-After). Get a free key for 60 requests per minute and 14 days of history, and send it as "Authorization: Bearer if_...": https://ironflow.sh/key?utm_source=api';
+      'keyless access allows 100 credits per rolling 24 hours from one IP; the next call is allowed in 3 h (Retry-After). A read costs 1 credit, analytics 5, SQL 10 and a stream 1 a minute: https://docs.ironflow.sh/concepts/rate-limits. Get a free key for 1,000 credits a day, 60 requests per minute and 14 days of history, and send it as "Authorization: Bearer if_...": https://ironflow.sh/key?utm_source=api';
     const client = await dataClient(() =>
       json({ error: { code: "KEYLESS_DAILY_LIMIT", message, upgrade: { plan: "explorer" } } }, { "Retry-After": "10800", "PAYMENT-REQUIRED": "x" }, 402)
     );
@@ -214,7 +227,7 @@ describe("data toolset results", () => {
     };
     expect(res.isError).toBe(true);
     expect(res.content[0].text).toBe(
-      "Error: Ironflow API error 402 KEYLESS_DAILY_LIMIT: keyless access allows 300 requests per rolling 24 hours from one IP; the next one is allowed in 3 h (Retry-After). Retry after 10800 s."
+      "Error: Ironflow API error 402 KEYLESS_DAILY_LIMIT: keyless access allows 100 credits per rolling 24 hours from one IP; the next call is allowed in 3 h (Retry-After). A read costs 1 credit, analytics 5, SQL 10 and a stream 1 a minute: https://docs.ironflow.sh/concepts/rate-limits. Retry after 10800 s."
     );
   });
 
@@ -404,7 +417,7 @@ describe("API notices in tool results", () => {
             error: {
               code: "KEYLESS_DAILY_LIMIT",
               message:
-                'keyless access allows 500 requests per day from one IP. Get a free key for 60 requests per minute and 30 days of history, and send it as "Authorization: Bearer if_...": https://ironflow.sh/key',
+                'keyless access allows 100 credits per rolling 24 hours from one IP; the next call is allowed in 1 h (Retry-After). Get a free key for 1,000 credits a day, 60 requests per minute and 14 days of history, and send it as "Authorization: Bearer if_...": https://ironflow.sh/key',
             },
           }),
           { status: 429, headers: { "content-type": "application/json", "Retry-After": "3600" } }
@@ -415,7 +428,7 @@ describe("API notices in tool results", () => {
       content: { text: string }[];
     };
     expect(res.isError).toBe(true);
-    expect(res.content[0].text).toMatch(/^Error: Ironflow API error 429 KEYLESS_DAILY_LIMIT: keyless access allows 500/);
+    expect(res.content[0].text).toMatch(/^Error: Ironflow API error 429 KEYLESS_DAILY_LIMIT: keyless access allows 100 credits/);
     expect(res.content[0].text).toContain("https://ironflow.sh/key");
     expect(res.content[0].text).toContain("Retry after 3600 s.");
   });

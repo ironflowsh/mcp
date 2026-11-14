@@ -215,7 +215,7 @@ const definitions: ToolDef[] = [
     name: "describe_data",
     title: "Describe SQL tables",
     description:
-      "Returns the SQL tables of Ironflow's Hyperliquid data (every fill and trade, per-market hourly volume and liquidation totals, per-wallet daily totals, wallet behaviour labels, funding rates and per-wallet funding payments, mark and oracle prices, open interest, liquidations, builder-code fills, transfers, vault flows), their columns, how far back each goes, query tips, worked examples and your own limits.",
+      "Returns the SQL tables of Ironflow's Hyperliquid data (every fill and trade, per-market hourly volume and liquidation totals, per-wallet daily totals, wallet behaviour labels, funding rates and per-wallet funding payments, mark and oracle prices, open interest, liquidations, builder-code fills, transfers, vault flows), their columns, how far back each goes, query tips, worked examples and your own limits. Costs no credits.",
     inputSchema: { type: "object", properties: {}, required: [] },
     handler: async (_args, api) => JSON.stringify(await api.get("/v1/query/schema")),
   },
@@ -223,7 +223,7 @@ const definitions: ToolDef[] = [
     name: "run_query",
     title: "Run SQL query",
     description:
-      "Run one read-only ClickHouse SELECT over Ironflow's Hyperliquid tables (hl.fills, hl.trades, hl.wallet_fills, hl.wallet_daily, hl.wallet_behavior, hl.market_hourly, hl.funding, hl.funding_payments, hl.mark_prices, hl.oracle_prices, hl.open_interest, hl.liquidations, hl.builder_fills, hl.transfers, hl.vault_operations). For volume, taker flow or liquidation totals per market over hours to months read hl.market_hourly, not hl.fills; call describe_data for columns. Aggregate in SQL: results are capped (1,000 rows keyless). Keyless: last 24 hours, 5 s per query, 60 query seconds per hour per IP; a free key from https://ironflow.sh/key gives 30 days of history.",
+      "Run one read-only ClickHouse SELECT over Ironflow's Hyperliquid tables (hl.fills, hl.trades, hl.wallet_fills, hl.wallet_daily, hl.wallet_behavior, hl.market_hourly, hl.funding, hl.funding_payments, hl.mark_prices, hl.oracle_prices, hl.open_interest, hl.liquidations, hl.builder_fills, hl.transfers, hl.vault_operations). For volume, taker flow or liquidation totals per market over hours to months read hl.market_hourly, not hl.fills; call describe_data for columns. Aggregate in SQL: results are capped (1,000 rows keyless). Each query costs 10 credits. Keyless: last 24 hours, 5 s per query, 60 query seconds per hour per IP; a free key from https://ironflow.sh/key gives 30 days of history.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1215,7 +1215,7 @@ const definitions: ToolDef[] = [
 
 
 
-  // ─── Signals (public endpoints: 60 requests per minute per IP, no key) ──
+  // ─── Signals (public endpoints: 60 requests a minute per IP, no key, no credits) ──
 
   {
     name: "get_top_traders",

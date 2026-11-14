@@ -103,14 +103,14 @@ describe("IronflowAPI notices", () => {
       "fetch",
       vi.fn().mockResolvedValue(
         json(
-          { error: { code: "KEYLESS_DAILY_LIMIT", message: "keyless access allows 500 requests per day from one IP: https://ironflow.sh/key", detail: "per IP" } },
+          { error: { code: "KEYLESS_DAILY_LIMIT", message: "keyless access allows 100 credits per rolling 24 hours from one IP: https://ironflow.sh/key", detail: "per IP" } },
           { status: 429, headers: { "Retry-After": "3600" } }
         )
       )
     );
     const api = new IronflowAPI("http://api").withContext({});
     await expect(api.get("/v1/trades", { market: "BTC-PERP" })).rejects.toThrow(
-      "Ironflow API error 429 KEYLESS_DAILY_LIMIT: keyless access allows 500 requests per day from one IP: https://ironflow.sh/key (per IP) Retry after 3600 s."
+      "Ironflow API error 429 KEYLESS_DAILY_LIMIT: keyless access allows 100 credits per rolling 24 hours from one IP: https://ironflow.sh/key (per IP) Retry after 3600 s."
     );
   });
   // Agents guessed 7 spellings of gold (XAU, XAUT, GOLD, xyz:XAU-PERP, ...)
