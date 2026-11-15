@@ -32,7 +32,10 @@ describe("claude.ai sessions", () => {
     const token = issueSession("s1");
     const [id, sig] = token.split(".");
     expect(readSession(token, "s2")).toBeUndefined();
-    expect(readSession(`${id}.${sig.slice(0, -1)}${sig.endsWith("A") ? "B" : "A"}`, "s1")).toBeUndefined();
+    expect(readSession(`${id}.${sig.startsWith("A") ? "B" : "A"}${sig.slice(1)}`, "s1")).toBeUndefined();
+    // A different spelling of the same bytes (the last character's unused bits) is refused too.
+    const last = sig.slice(-1), alt = last === "A" ? "B" : last === "B" ? "A" : null;
+    if (alt) expect(readSession(`${id}.${sig.slice(0, -1)}${alt}`, "s1")).toBeUndefined();
     expect(readSession(`${"A".repeat(22)}.${sig}`, "s1")).toBeUndefined();
     expect(readSession(id, "s1")).toBeUndefined();
     expect(readSession("", "s1")).toBeUndefined();
