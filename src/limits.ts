@@ -7,6 +7,7 @@
 // the app from initialize, so it names the step for that app.
 
 import { ApiError } from "./api.js";
+import { isClaudeAI } from "./session.js";
 
 // KEY_PAGE is the free key page, tagged so key requests from MCP are counted.
 export const KEY_PAGE = "https://ironflow.sh/key?utm_source=mcp";
@@ -19,14 +20,14 @@ export type Transport = "http" | "stdio";
 
 // connectStep says how to connect Ironflow with a key in the app that sent
 // initialize (a name such as claude-code/2.1.0, cursor-vscode/1.0.0 or
-// claude-ai/0.1.0), with a step any app can follow otherwise.
+// Anthropic/ClaudeAI/1.0.0), with a step any app can follow otherwise.
 export function connectStep(client: string | undefined, transport: Transport): string {
   if (transport === "stdio") return "set IRONFLOW_API_KEY=if_... in the Ironflow server's env and restart the app";
   const app = (client ?? "").toLowerCase();
   if (app.includes("claude-code")) {
     return `run claude mcp remove ironflow, then claude mcp add --transport http ironflow ${HOSTED_URL} --header "Authorization: Bearer if_..."`;
   }
-  if (app.includes("claude-ai")) return `in Customize > Connectors remove Ironflow and add it again with the URL ${HOSTED_URL}?key=if_...`;
+  if (isClaudeAI(app)) return `in Customize > Connectors remove Ironflow and add it again with the URL ${HOSTED_URL}?key=if_...`;
   if (app.includes("cursor")) return `add "headers": {"Authorization": "Bearer if_..."} next to the Ironflow url in .cursor/mcp.json`;
   if (app.includes("visual studio code") || app.includes("vscode")) {
     return `add "headers": {"Authorization": "Bearer if_..."} to the Ironflow server in mcp.json`;
@@ -68,6 +69,23 @@ export interface LimitContext {
   transport: Transport;
 }
 
+// usedUp says whose keyless allowance ran out: a claude.ai conversation's
+// own, the total all claude.ai conversations share (both counted by the API
+// for the session the hosted server passes on, session.ts), or an IP's.
+function usedUp(message: string, credits: string, ctx: LimitContext): string {
+  if (/for one claude\.ai conversation/.test(message)) {
+    return `the keyless allowance for this conversation is used up (${credits} credits in a rolling 24 hours).`;
+  }
+  if (/for all claude\.ai conversations/.test(message)) {
+    return `the keyless allowance that all claude.ai conversations share is used up (${credits} credits in a rolling 24 hours).`;
+  }
+  // claude.ai and other cloud apps call from shared IP addresses, so their
+  // users share one keyless allowance (it counts per IP).
+  const shared =
+    ctx.transport === "http" && isClaudeAI(ctx.client) ? " claude.ai connects from shared IP addresses, so its users share that allowance." : "";
+  return `the keyless allowance for this IP address is used up (${credits} credits in a rolling 24 hours).${shared}`;
+}
+
 // limitText is the error text for a keyless call that a free key would let
 // through, or undefined to keep the API's own text (key holders, other
 // errors, and the data toolset, which carries no key lines).
@@ -82,13 +100,7 @@ export function limitText(error: unknown, ctx: LimitContext): string | undefined
     const back = error.retryAfterS
       ? `Every Ironflow tool fails for ${waitFor(error.retryAfterS)}, so make no more Ironflow calls until then.`
       : "Every Ironflow tool fails for now, so make no more Ironflow calls.";
-    // claude.ai and other cloud apps call from shared IP addresses, so their
-    // users share one keyless allowance (it counts per IP).
-    const shared =
-      ctx.transport === "http" && (ctx.client ?? "").toLowerCase().includes("claude-ai")
-        ? " claude.ai connects from shared IP addresses, so its users share that allowance."
-        : "";
-    return `Ironflow API error ${error.status} KEYLESS_DAILY_LIMIT: the keyless allowance for this IP address is used up (${credits} credits in a rolling 24 hours).${shared} ${back} Tell the user: ${help}.`;
+    return `Ironflow API error ${error.status} KEYLESS_DAILY_LIMIT: ${usedUp(error.message, credits, ctx)} ${back} Tell the user: ${help}.`;
   }
   // A per-minute limit passes by itself: the agent waits, and the key is
   // only an option.
