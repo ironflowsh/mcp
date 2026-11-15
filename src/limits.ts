@@ -36,7 +36,7 @@ export function connectStep(client: string | undefined, transport: Transport): s
 
 // keyHelp is the free key and how to use it, as one clause for the user.
 export function keyHelp(client: string | undefined, transport: Transport): string {
-  return `get a free key at ${KEY_PAGE} (it takes a minute and gives 1,000 credits a day and 14 days of history), then ${connectStep(client, transport)}`;
+  return `get a free key at ${KEY_PAGE} (it takes a minute and gives 1,000 credits a day, up to 3,000 a month, and 14 days of history), then ${connectStep(client, transport)}`;
 }
 
 // The codes a free key lifts for a keyless caller (the API's tierLimitCodes

@@ -8,7 +8,7 @@ MCP server for [Ironflow](https://ironflow.sh), the agent cloud for Hyperliquid.
 - 4 manage liquidation alerts that Ironflow posts to your Discord, Slack, Telegram or webhook.
 - 8 run [Ironbox](https://ironflow.sh/ironbox), a cloud sandbox for trading agents next to Hyperliquid. Test a Hyperliquid trading bot on a paper account with 10,000 USD and live prices, or run breakout, grid and DCA strategies on it. A paper box never places a real order.
 
-No API key needed to start: keyless calls get 30 requests a minute, 100 credits a day and 24 hours of history. A free key from [ironflow.sh/key](https://ironflow.sh/key) gives 60 requests a minute, 1,000 credits a day and 14 days. A read costs 1 credit, analytics 5 and SQL 10 (see [Limits](#limits)). Agents with a USDC wallet on Base can also pay per call with x402, from $0.001, with no key and no credits ([pay per call](https://docs.ironflow.sh/guides/pay-per-call)).
+No API key needed to start: keyless calls get 30 requests a minute, 100 credits a day and 24 hours of history. A free key from [ironflow.sh/key](https://ironflow.sh/key) gives 60 requests a minute, 1,000 credits a day (up to 3,000 a month) and 14 days. A read costs 1 credit, analytics 5 and SQL 10 (see [Limits](#limits)). Agents with a USDC wallet on Base can also pay per call with x402, from $0.001, with no key and no credits ([pay per call](https://docs.ironflow.sh/guides/pay-per-call)).
 
 ## Install
 
