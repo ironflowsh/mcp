@@ -46,6 +46,9 @@ export function readSession(header: string | string[] | undefined, secret: strin
   if (!m) return undefined;
   const want = mac(secret, "mcp-session-id", m[1]).subarray(0, SIG_BYTES);
   const got = Buffer.from(m[2], "base64url");
+  // Only the exact encoding we issued: the last base64url character carries
+  // unused bits, so other spellings would decode to the same bytes.
+  if (got.toString("base64url") !== m[2]) return undefined;
   return got.length === want.length && timingSafeEqual(got, want) ? m[1] : undefined;
 }
 
