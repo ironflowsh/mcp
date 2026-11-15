@@ -21,6 +21,10 @@
 //   MCP_LOG_SALT       keys the caller-IP hash in the access log; use the
 //                      API's REQUEST_LOG_SALT so a caller hashes the same in
 //                      both logs (random per process when unset)
+//   MCP_SESSION_SECRET signs claude.ai session ids and the session MAC the
+//                      API checks (session.ts); defaults to MCP_LOG_SALT,
+//                      and must equal the API's MCP_SESSION_SECRET (which
+//                      defaults to its REQUEST_LOG_SALT)
 
 import { randomBytes } from "node:crypto";
 import { createServer as createHttpServer, IncomingMessage, ServerResponse } from "node:http";
@@ -30,6 +34,7 @@ import { IronflowAPI } from "./api.js";
 import { discoverReply } from "./discover.js";
 import { clientIP, DATA_PATH, HttpError, readKey, readToolset } from "./request.js";
 import { createServer, packageVersion, type ToolOutcome } from "./server.js";
+import { CLAUDE_AI, isClaudeAI, issueSession, readSession, sessionForAPI } from "./session.js";
 import {
   callerHash,
   ClientMemory,
@@ -51,6 +56,7 @@ const apiUrl = process.env.IRONFLOW_API_URL || "https://api.ironflow.sh";
 const forwardClientIP = process.env.FORWARD_CLIENT_IP === "true";
 const version = packageVersion();
 const logSalt = process.env.MCP_LOG_SALT || randomBytes(32).toString("hex");
+const sessionSecret = process.env.MCP_SESSION_SECRET || logSalt;
 const clients = new ClientMemory();
 
 // setCors allows browser-based MCP clients (inspectors, web agents). No
@@ -115,14 +121,22 @@ async function handleMCP(req: IncomingMessage, res: ServerResponse, url: URL): P
   const caller = callerHash(ip, logSalt);
   const initClient = clientFromInitialize(body);
   if (initClient) clients.remember(caller, initClient);
-  const recalled = initClient ? "" : clients.recall(caller);
-  const api = new IronflowAPI(apiUrl, key, undefined, `${version}-hosted`, ip);
+  // A keyless claude.ai initialize gets a session id, and the requests that
+  // carry it back are that conversation: the API gives each one its own
+  // keyless credits (session.ts). claude.ai changes IP almost every
+  // request, so the session also names the app better than the IP does.
+  const newSession = !key && isClaudeAI(initClient) ? issueSession(sessionSecret) : undefined;
+  const sessionId = key || initClient ? undefined : readSession(req.headers["mcp-session-id"], sessionSecret);
+  const recalled = initClient || sessionId ? "" : clients.recall(caller);
+  const session = sessionId ? sessionForAPI(sessionId, sessionSecret) : undefined;
+  const api = new IronflowAPI(apiUrl, key, undefined, `${version}-hosted`, ip, session);
   // initialize and tools/list never call the API, so the API's request log
   // would not see them; report each (fire and forget) with the client app.
   // The client app replaces the User-Agent, so a qa_check User-Agent is
   // passed on separately: our own checks stay out of mcp_request, and their
   // tool calls carry a qa_check client name (server.ts).
-  const client = initClient || recalled || userAgent;
+  const fallbackClient = sessionId ? CLAUDE_AI : recalled || userAgent;
+  const client = initClient || fallbackClient;
   const qaCheck = isQACheck(req.headers["user-agent"]);
   for (const rpc of sessionRPCs(body)) {
     void api.withContext({ client }).noteRPC(rpc, Boolean(key), toolset === "all" ? undefined : toolset, qaCheck);
@@ -137,10 +151,14 @@ async function handleMCP(req: IncomingMessage, res: ServerResponse, url: URL): P
         toolset: toolset === "all" ? undefined : toolset,
         status: res.statusCode,
         ms: Date.now() - started,
-        client: initClient || recalled || undefined,
+        client: initClient || (sessionId ? CLAUDE_AI : recalled) || undefined,
         client_recalled: recalled ? true : undefined,
         ua: userAgent || undefined,
         caller: caller || undefined,
+        // A hash of the claude.ai session, so the log counts conversations
+        // (session_new on the initialize that opened it).
+        session: callerHash(sessionId ?? newSession?.split(".")[0], logSalt) || undefined,
+        session_new: newSession ? true : undefined,
         args: summarizeArgs(body) || undefined,
         ...toolLogFields(outcomes, api.upstreamCalls()),
       })
@@ -155,7 +173,7 @@ async function handleMCP(req: IncomingMessage, res: ServerResponse, url: URL): P
     return;
   }
   const server = createServer(api, version, {
-    fallbackClient: recalled || userAgent,
+    fallbackClient,
     onToolResult: (outcome) => outcomes.push(outcome),
     toolset,
     transport: "http",
@@ -170,6 +188,9 @@ async function handleMCP(req: IncomingMessage, res: ServerResponse, url: URL): P
     void server.close();
     logAccess();
   });
+  // The transport keeps headers set here; the client sends the id back on
+  // every later request of the conversation.
+  if (newSession) res.setHeader("Mcp-Session-Id", newSession);
   await server.connect(transport);
   await transport.handleRequest(req, res, body);
 }

@@ -113,7 +113,7 @@ Every call costs credits: a read 1, analytics 5 (such as the liquidation map and
 | Explorer, 49 USDC per 30 days | 100 | 25,000 a day | 90 days |
 | Builder, 149 USDC per 30 days | 1,000 | 250,000 a day | 1 year |
 
-Enterprise has no credit cap. A keyless app that names itself in its `User-Agent` gets 300 credits a day across all its IPs. Key credits count per account, all its keys together, over the UTC day and, on a free key, the UTC month. Past them a tool returns an error: `KEYLESS_DAILY_LIMIT` without a key, `DAILY_QUOTA_EXCEEDED` (back at 00:00 UTC) or `MONTHLY_QUOTA_EXCEEDED` (free keys, back on the 1st at 00:00 UTC) with one. Without a key, a limit a free key lifts says when calls work again and how to add the key in the app in use (Claude Code, claude.ai, Cursor, VS Code or the local server). Plans: [ironflow.sh/upgrade](https://ironflow.sh/upgrade). Calls paid one by one with [x402](https://docs.ironflow.sh/guides/pay-per-call) (USDC on Base, from $0.001 a call, no key) cost no credits, have free key limits and are for personal use. Every limit: [docs.ironflow.sh/concepts/rate-limits](https://docs.ironflow.sh/concepts/rate-limits).
+Enterprise has no credit cap. A keyless app that names itself in its `User-Agent` gets 300 credits a day across all its IPs. On the hosted server each claude.ai conversation gets 30 keyless credits a day of its own, up to 3,000 a day for all claude.ai conversations together. Key credits count per account, all its keys together, over the UTC day and, on a free key, the UTC month. Past them a tool returns an error: `KEYLESS_DAILY_LIMIT` without a key, `DAILY_QUOTA_EXCEEDED` (back at 00:00 UTC) or `MONTHLY_QUOTA_EXCEEDED` (free keys, back on the 1st at 00:00 UTC) with one. Without a key, a limit a free key lifts says when calls work again and how to add the key in the app in use (Claude Code, claude.ai, Cursor, VS Code or the local server). Plans: [ironflow.sh/upgrade](https://ironflow.sh/upgrade). Calls paid one by one with [x402](https://docs.ironflow.sh/guides/pay-per-call) (USDC on Base, from $0.001 a call, no key) cost no credits, have free key limits and are for personal use. Every limit: [docs.ironflow.sh/concepts/rate-limits](https://docs.ironflow.sh/concepts/rate-limits).
 
 ## Configuration
 
@@ -123,6 +123,7 @@ Enterprise has no credit cap. A keyless app that names itself in its `User-Agent
 | `IRONFLOW_API_URL` | `https://api.ironflow.sh` |
 | `PORT` (HTTP server) | `8080` |
 | `MCP_LOG_SALT` (HTTP server) | random per process; keys the caller hash in the access log |
+| `MCP_SESSION_SECRET` (HTTP server) | `MCP_LOG_SALT`; signs claude.ai session ids and the session the API trusts |
 
 ## Usage data
 

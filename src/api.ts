@@ -1,6 +1,7 @@
 // Ironflow REST API client. Uses native fetch — no external HTTP dependencies.
 
 import { type ApiNotice, formatNotices, readNotice } from "./notice.js";
+import type { McpSession } from "./session.js";
 import { sanitizeClientApp, type SessionRPC } from "./usage.js";
 
 const DEFAULT_BASE_URL = "https://api.ironflow.sh";
@@ -61,6 +62,7 @@ export class IronflowAPI {
   private source: string;
   private userAgent: string;
   private forwardedFor?: string;
+  private session?: McpSession;
   private context: CallContext = {};
   // Shared by every withContext copy, so the hosted server can read what
   // the tool calls of one request did upstream.
@@ -69,20 +71,24 @@ export class IronflowAPI {
   // call, so a tool result carries only its own notices.
   private notices: ApiNotice[] = [];
 
-  // forwardedFor is set only by the hosted HTTP server: it passes the MCP
-  // client's IP on so keyless rate limits apply per caller, not per server.
+  // forwardedFor and session are set only by the hosted HTTP server: it
+  // passes the MCP client's IP on so keyless rate limits apply per caller,
+  // not per server, and a claude.ai session so its keyless calls count per
+  // conversation (session.ts). A keyed client never sends the session.
   constructor(
     baseUrl = DEFAULT_BASE_URL,
     apiKey?: string,
     source = DEFAULT_SOURCE,
     version = "unknown",
-    forwardedFor?: string
+    forwardedFor?: string,
+    session?: McpSession
   ) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
     this.apiKey = apiKey;
     this.source = source;
     this.userAgent = `ironflow-mcp/${version}`;
     this.forwardedFor = forwardedFor;
+    this.session = apiKey ? undefined : session;
   }
 
   private headers(): Record<string, string> {
@@ -95,6 +101,10 @@ export class IronflowAPI {
     }
     if (this.forwardedFor) {
       h["X-Forwarded-For"] = this.forwardedFor;
+    }
+    if (this.session) {
+      h["X-Ironflow-Mcp-Session"] = this.session.id;
+      h["X-Ironflow-Mcp-Session-Auth"] = this.session.auth;
     }
     const client = sanitizeClientApp(this.context.client);
     if (client) h["X-Ironflow-Client"] = client;
@@ -121,6 +131,8 @@ export class IronflowAPI {
     const headers = this.headers();
     delete headers["Authorization"];
     delete headers["X-Ironflow-Tool"];
+    delete headers["X-Ironflow-Mcp-Session"];
+    delete headers["X-Ironflow-Mcp-Session-Auth"];
     try {
       const res = await fetch(url.toString(), { method: "POST", headers, signal: AbortSignal.timeout(NOTE_TIMEOUT_MS) });
       await res.body?.cancel();
