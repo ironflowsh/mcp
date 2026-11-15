@@ -120,7 +120,8 @@ async function handleMCP(req: IncomingMessage, res: ServerResponse, url: URL): P
   // initialize and tools/list never call the API, so the API's request log
   // would not see them; report each (fire and forget) with the client app.
   // The client app replaces the User-Agent, so a qa_check User-Agent is
-  // passed on separately: our own checks stay out of mcp_request.
+  // passed on separately: our own checks stay out of mcp_request, and their
+  // tool calls carry a qa_check client name (server.ts).
   const client = initClient || recalled || userAgent;
   const qaCheck = isQACheck(req.headers["user-agent"]);
   for (const rpc of sessionRPCs(body)) {
@@ -157,6 +158,8 @@ async function handleMCP(req: IncomingMessage, res: ServerResponse, url: URL): P
     fallbackClient: recalled || userAgent,
     onToolResult: (outcome) => outcomes.push(outcome),
     toolset,
+    transport: "http",
+    qaCheck,
   });
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,

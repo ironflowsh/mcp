@@ -1,6 +1,7 @@
 // MCP tool definitions for Ironflow market data.
 
 import { IronflowAPI } from "./api.js";
+import { keyHelp, type Transport } from "./limits.js";
 import { SUMMARY_WINDOWS, WINDOW_MINUTES, summaryOutput, type LiquidationSummaryResponse } from "./liquidations.js";
 import { plainSchema, plainText } from "./plain.js";
 import { MAX_LIMIT, rankSnapshot, SORT_KEYS, type SortKey } from "./snapshot.js";
@@ -45,12 +46,10 @@ const always = (): boolean => true;
 // still sends another mode (an old cached schema) gets a plain refusal.
 export const PAPER_ONLY = "Ironbox runs on paper only: simulated funds, never a real order. Leave mode out to get a paper box.";
 
-// KEY_PAGE is the free key page, tagged so key requests from MCP are counted.
-export const KEY_PAGE = "https://ironflow.sh/key?utm_source=mcp";
-
-// keyRequiredText is the answer to a keyless call of a key-only tool.
-export function keyRequiredText(tool: string, args: Record<string, unknown>): string {
-  return `${tool} needs an API key (a free key works). Get one in a minute at ${KEY_PAGE}, then connect with the header Authorization: Bearer if_... (or ?key=if_... on the URL).`;
+// keyRequiredText is the answer to a keyless call of a key-only tool, with
+// how to add the key in the client in use (limits.ts).
+export function keyRequiredText(tool: string, client: string | undefined, transport: Transport): string {
+  return `${tool} needs an API key (a free key works). Tell the user: ${keyHelp(client, transport)}.`;
 }
 
 // ─── Arg validation helpers ──────────────────────────────────────────────────
@@ -215,7 +214,7 @@ const definitions: ToolDef[] = [
     name: "describe_data",
     title: "Describe SQL tables",
     description:
-      "Returns the SQL tables of Ironflow's Hyperliquid data (every fill and trade, per-market hourly volume and liquidation totals, per-wallet daily totals, wallet behaviour labels, funding rates and per-wallet funding payments, mark and oracle prices, open interest, liquidations, builder-code fills, transfers, vault flows), their columns, how far back each goes, query tips, worked examples and your own limits. Costs no credits.",
+      "What can SQL answer about Hyperliquid? Lists the SQL tables of Ironflow's Hyperliquid data (fills, trades, hourly market totals, wallet daily totals and labels, funding, prices, open interest, liquidations, builder fills, transfers, vault flows), their columns, how far back each goes, query tips, worked examples and your own limits. Call it before run_query. Costs no credits.",
     inputSchema: { type: "object", properties: {}, required: [] },
     handler: async (_args, api) => JSON.stringify(await api.get("/v1/query/schema")),
   },
@@ -223,7 +222,7 @@ const definitions: ToolDef[] = [
     name: "run_query",
     title: "Run SQL query",
     description:
-      "Run one read-only ClickHouse SELECT over Ironflow's Hyperliquid tables (hl.fills, hl.trades, hl.wallet_fills, hl.wallet_daily, hl.wallet_behavior, hl.market_hourly, hl.funding, hl.funding_payments, hl.mark_prices, hl.oracle_prices, hl.open_interest, hl.liquidations, hl.builder_fills, hl.transfers, hl.vault_operations). For volume, taker flow or liquidation totals per market over hours to months read hl.market_hourly, not hl.fills; call describe_data for columns. Aggregate in SQL: results are capped (1,000 rows keyless). Each query costs 10 credits. Keyless: last 24 hours, 5 s per query, 60 query seconds per hour per IP; a free key from https://ironflow.sh/key gives 30 days of history.",
+      "Anything the other tools do not answer: runs one read-only ClickHouse SELECT over Ironflow's Hyperliquid tables (hl.fills, hl.trades, hl.wallet_fills, hl.wallet_daily, hl.wallet_behavior, hl.market_hourly, hl.funding, hl.funding_payments, hl.mark_prices, hl.oracle_prices, hl.open_interest, hl.liquidations, hl.builder_fills, hl.transfers, hl.vault_operations). For volume, taker flow or liquidation totals per market over hours to months read hl.market_hourly, not hl.fills; call describe_data for columns. Aggregate in SQL: results are capped (1,000 rows keyless). Each query costs 10 credits. Keyless: last 24 hours, 5 s per query, 60 query seconds per hour per IP; a free key from https://ironflow.sh/key gives 30 days of history.",
     inputSchema: {
       type: "object",
       properties: {
@@ -242,7 +241,7 @@ const definitions: ToolDef[] = [
     name: "get_wallet_behavior",
     title: "Wallet behavior labels",
     description:
-      "How Hyperliquid wallets trade, from their last 30 days: labels (market_maker, high_frequency, whale, directional, consistent_winner, big_loser, revenge_sizing, often_liquidated, hip3_trader, spot_trader, prediction_trader) and the numbers behind them (maker share, buy/sell imbalance, fills per day, green-day share, profit factor, liquidations). Look up specific addresses, or list wallets with one label.",
+      "How does a Hyperliquid wallet trade, and which wallets are whales or market makers? Labels from the last 30 days (market_maker, high_frequency, whale, directional, consistent_winner, big_loser, revenge_sizing, often_liquidated, hip3_trader, spot_trader, prediction_trader) and the numbers behind them (maker share, buy/sell imbalance, fills per day, green-day share, profit factor, liquidations). Look up specific addresses, or list wallets with one label.",
     inputSchema: {
       type: "object",
       properties: {
@@ -276,7 +275,7 @@ const definitions: ToolDef[] = [
     name: "get_price",
     title: "Market price",
     description:
-      "Latest mark price of one Hyperliquid market as a single number: native perps, HIP-3 builder perps (e.g. xyz:NVDA-PERP) and spot. The quickest answer to 'what is X trading at'. For the oracle price and funding use get_mark_prices; for price history use get_candles; to compare many markets at once use get_markets_snapshot.",
+      "What is X trading at on Hyperliquid? The latest mark price of one market as a single number: native perps, HIP-3 builder perps (e.g. xyz:NVDA-PERP) and spot. For the oracle price and funding use get_mark_prices; for price history use get_candles; to compare many markets at once use get_markets_snapshot.",
     inputSchema: {
       type: "object",
       properties: {
@@ -293,7 +292,7 @@ const definitions: ToolDef[] = [
   {
     name: "get_recent_trades",
     title: "Recent trades",
-    description: "Latest tick-level trades on a Hyperliquid market from our own nodes: price, size, side and block time. Covers native perps, HIP-3 builder markets, HIP-4 outcomes and spot.",
+    description: "What just traded on a Hyperliquid market? The latest tick-level trades from our own nodes: price, size, side and block time. Covers native perps, HIP-3 builder markets, HIP-4 outcomes and spot.",
     inputSchema: {
       type: "object",
       properties: {
@@ -313,7 +312,7 @@ const definitions: ToolDef[] = [
     name: "get_candles",
     title: "Candles (OHLCV)",
     description:
-      "OHLCV candles for one Hyperliquid market, built from every trade: open, high, low, close, volume and trade count per candle, oldest first. Returns the latest 24 candles by default (up to 500), at 1m to 1d intervals. Use it for price history, ranges and charts. For only the current price use get_price; for individual trades use get_recent_trades.",
+      "How has a Hyperliquid market's price moved? OHLCV candles of one market, built from every trade: open, high, low, close, volume and trade count per candle, oldest first. For only the current price use get_price; for individual trades use get_recent_trades.",
     inputSchema: {
       type: "object",
       properties: {
@@ -334,7 +333,7 @@ const definitions: ToolDef[] = [
   {
     name: "get_funding_rates",
     title: "Funding rate history",
-    description: "Hourly funding rate history for a Hyperliquid perp, including HIP-3 builder perps. A positive rate means longs pay shorts.",
+    description: "What has funding been on a Hyperliquid perp? Hourly funding rate history, newest first, including HIP-3 builder perps. A positive rate means longs pay shorts. For the rate right now use get_mark_prices; for averages and annualized rates, get_funding_stats.",
     inputSchema: {
       type: "object",
       properties: {
@@ -354,7 +353,7 @@ const definitions: ToolDef[] = [
     name: "get_open_interest",
     title: "Open interest",
     description:
-      "Latest open interest of one Hyperliquid perp in units of the base asset (BTC for BTC-PERP), with its 24-hour traded volume in USD and the time of the reading. Multiply by get_price for open interest in USD. To compare open interest across markets use get_markets_snapshot; for its history use run_query (see describe_data).",
+      "What is open interest on a Hyperliquid perp? The latest open interest of one perp in units of the base asset (BTC for BTC-PERP), with its 24-hour traded volume in USD and the time of the reading. Multiply by get_price for open interest in USD. To compare open interest across markets use get_markets_snapshot; for its history use run_query (see describe_data).",
     inputSchema: {
       type: "object",
       properties: {
@@ -372,7 +371,7 @@ const definitions: ToolDef[] = [
     name: "get_open_interest_changes",
     title: "Open interest movers",
     description:
-      "Hyperliquid perps ranked by how their open interest moved over the last 1h, 4h, 24h or 7d: open interest at the start and now (in coins), the change in USD at the latest mark and in percent. Sorted by the size of the USD change by default, or by percent. Filter to one HIP-3 dex (xyz) or to native perps only. Markets with less than $100k of open interest at both ends are left out unless you lower min_oi_usd. Use it for 'where is money flowing in or out'. For one market's latest open interest use get_open_interest.",
+      "Where is money flowing in or out on Hyperliquid? Perps ranked by how their open interest moved over the last 1h, 4h, 24h or 7d: open interest at the start and now (in coins), the change in USD at the latest mark and in percent. For one market's latest open interest use get_open_interest.",
     inputSchema: {
       type: "object",
       properties: {
@@ -398,7 +397,7 @@ const definitions: ToolDef[] = [
     name: "get_outcome_markets",
     title: "HIP-4 outcome markets overview",
     description:
-      "Hyperliquid HIP-4 outcome markets (prediction markets on sports, central bank decisions, IPOs and daily BTC price contracts) over the last 4 hours, 1 day or 1 week: traded volume (each trade counted once), fills, wallets and active markets, plus the most traded outcomes with their last traded price (the implied probability, 0 to 1) and last-24-hour traded volume. Each outcome has a Yes and a No side whose prices sum to 1. For one outcome's trades or candles pass its symbol to get_recent_trades or get_candles; settled outcomes stay queryable. For per-wallet outcome activity use run_query on hl.wallet_daily with market_class = 'prediction'.",
+      "What is trading on Hyperliquid's prediction markets? HIP-4 outcome markets (prediction markets on sports, central bank decisions, IPOs and daily BTC price contracts) over the last 4 hours, 1 day or 1 week: traded volume, fills, wallets and active markets, plus the most traded outcomes with their last traded price (the implied probability, 0 to 1) and last-24-hour traded volume. Each outcome has a Yes and a No side whose prices sum to 1. For one outcome's trades or candles pass its symbol to get_recent_trades or get_candles; settled outcomes stay queryable. For per-wallet outcome activity use run_query on hl.wallet_daily with market_class = 'prediction'.",
     inputSchema: {
       type: "object",
       properties: {
@@ -418,7 +417,7 @@ const definitions: ToolDef[] = [
     name: "get_premium",
     title: "Mark against oracle premium",
     description:
-      "A Hyperliquid perp's mark price against its oracle price over time, with the premium in basis points ((mark / oracle - 1) x 10,000) per bucket and a summary (latest, mean, min, max). On HIP-3 stock, index and commodity perps such as xyz:NVDA-PERP, xyz:GOLD-PERP or xyz:SP500-PERP the oracle follows the underlying, so this shows how far the perp trades from what it tracks, weekends included. Default 1h buckets over the last 7 days. For funding payments use get_funding_rates.",
+      "How far does a Hyperliquid perp trade from its oracle? Its mark price against its oracle price over time, with the premium in basis points ((mark / oracle - 1) x 10,000) per bucket and a summary (latest, mean, min, max). On HIP-3 stock, index and commodity perps such as xyz:NVDA-PERP, xyz:GOLD-PERP or xyz:SP500-PERP the oracle follows the underlying, so this shows how far the perp trades from what it tracks, weekends included. Default 1h buckets over the last 7 days. For funding payments use get_funding_rates.",
     inputSchema: {
       type: "object",
       properties: {
@@ -439,7 +438,7 @@ const definitions: ToolDef[] = [
   {
     name: "get_liquidations",
     title: "Liquidations",
-    description: "Liquidations on a Hyperliquid perp, read from our own nodes: price, size, side and the liquidated wallet. Hyperliquid's public API has no liquidation feed.",
+    description: "Who just got liquidated on a Hyperliquid perp? The latest liquidations of one market from our own nodes, newest first: price, size, side and the liquidated wallet. Hyperliquid's public API has no liquidation feed. For totals and the largest across every market use get_liquidation_summary.",
     inputSchema: {
       type: "object",
       properties: {
@@ -695,7 +694,7 @@ const definitions: ToolDef[] = [
     name: "get_auto_deleveraging",
     title: "Auto-deleveraging fills",
     description:
-      "Hyperliquid auto-deleveraging (ADL) fills, newest first, across all markets or one: profitable positions Hyperliquid closed to cover a liquidation its backstop could not absorb. Per fill: wallet, market, side, price, size, notional, realized PnL, trade id (shared with the liquidated side) and transaction hash. Recorded from 2026-08-01; the default window is the last 7 days. For the liquidated side use get_liquidations.",
+      "Did Hyperliquid auto-deleverage anyone? Auto-deleveraging (ADL) fills, newest first, across all markets or one: profitable positions Hyperliquid closed to cover a liquidation its backstop could not absorb. Per fill: wallet, market, side, price, size, notional, realized PnL, trade id (shared with the liquidated side) and transaction hash. Recorded from 2026-08-01; the default window is the last 7 days. For the liquidated side use get_liquidations.",
     inputSchema: {
       type: "object",
       properties: {
@@ -720,7 +719,7 @@ const definitions: ToolDef[] = [
     name: "get_liquidation_summary",
     title: "Liquidation summary",
     description:
-      "Liquidations on Hyperliquid over a trailing window, totalled across every market or the ones named: count, wallets, notional, longs vs shorts liquidated, the top markets and the largest single liquidation with its price. Use it for 'who got liquidated in the last hour?' or 'how much was liquidated today?'. For the individual liquidations use get_liquidations; for liquidations grouped by price use get_liquidation_levels; for where open positions would be liquidated next use get_liquidation_map. Windows from 15m to 24h without a key, 7d with one. Totals are computed by the API over every liquidation, not sampled.",
+      "How much was liquidated on Hyperliquid, and what were the biggest? Liquidations over a trailing window, totalled across every market or the ones named: count, wallets, notional, longs vs shorts liquidated, the top markets and the largest single liquidation with its price. For the individual liquidations use get_liquidations; for liquidations grouped by price use get_liquidation_levels; for where open positions would be liquidated next use get_liquidation_map. Windows from 15m to 24h without a key, 7d with one.",
     inputSchema: {
       type: "object",
       properties: {
@@ -753,7 +752,7 @@ const definitions: ToolDef[] = [
   {
     name: "get_fills",
     title: "Wallet fills",
-    description: "Every fill for one Hyperliquid wallet, optionally for one market, from indexed history: price, size, side, fee and realized PnL. Hyperliquid's own userFills endpoints stop at the 10,000 most recent fills.",
+    description: "What did a Hyperliquid wallet trade? Every fill for one wallet, optionally for one market, from indexed history: price, size, side, fee and realized PnL. Hyperliquid's own userFills endpoints stop at the 10,000 most recent fills.",
     inputSchema: {
       type: "object",
       properties: {
@@ -775,7 +774,7 @@ const definitions: ToolDef[] = [
     name: "get_mark_prices",
     title: "Mark and oracle price",
     description:
-      "Latest mark price, oracle price and current hourly funding rate of one Hyperliquid perp, with the time of the reading. The funding rate is a fraction per hour (0.0000125 = 0.00125%); positive means longs pay shorts. Use it when you need the oracle price or funding next to the mark, for example for basis or premium. For only the price use get_price, for funding history get_funding_rates, and for many markets at once get_markets_snapshot.",
+      "What is funding on a Hyperliquid perp right now? The latest mark price, oracle price and current hourly funding rate of one perp, with the time of the reading. The funding rate is a fraction per hour (0.0000125 = 0.00125%); positive means longs pay shorts. For only the price use get_price, for funding history get_funding_rates, and for many markets at once get_markets_snapshot.",
     inputSchema: {
       type: "object",
       properties: {
@@ -793,7 +792,7 @@ const definitions: ToolDef[] = [
     name: "get_vault_operations",
     title: "Vault deposits and withdrawals",
     description:
-      "Deposits into and withdrawals from one Hyperliquid vault or one depositor. Pass vault, address, or both; at least one is required (HLP is 0xdfc24b077bc1425ad1dea75bcb6f8158e10df303).",
+      "Who moved money in or out of a Hyperliquid vault? Deposits into and withdrawals from one vault or one depositor. Pass vault, address, or both; at least one is required (HLP is 0xdfc24b077bc1425ad1dea75bcb6f8158e10df303).",
     inputSchema: {
       type: "object",
       properties: {
@@ -824,7 +823,7 @@ const definitions: ToolDef[] = [
   {
     name: "get_liquidation_levels",
     title: "Liquidation levels",
-    description: "Liquidations that happened on a Hyperliquid perp, bucketed by price and side: where longs and shorts were wiped out (side sell = a liquidated long). These are past liquidations; for where open positions would be liquidated next, use get_liquidation_map. Without a key you get the 10 busiest levels of the last 24 hours; any key, including a free one (https://ironflow.sh/key), returns every level.",
+    description: "At which prices did liquidations happen on a Hyperliquid perp? Past liquidations bucketed by price and side: where longs and shorts were wiped out (side sell = a liquidated long). For where open positions would be liquidated next, use get_liquidation_map. Without a key you get the 10 busiest levels of the last 24 hours; any key, including a free one (https://ironflow.sh/key), returns every level.",
     inputSchema: {
       type: "object",
       properties: {
@@ -843,7 +842,7 @@ const definitions: ToolDef[] = [
   {
     name: "get_liquidation_map",
     title: "Liquidation map",
-    description: "Where open positions on a Hyperliquid perp would be liquidated if the price moved: notional (size x liquidation price) by price range, longs below the current price and shorts above, with running totals from the price outward. Built from every open position in our node's latest snapshot, about every 12 minutes (snapshot.age_s says how old). Cross-margin prices assume the account's other positions stay at mark. For liquidations that already happened use get_liquidation_levels. Without a key you get the 10 largest ranges within 10% of the price; any key, including a free one (https://ironflow.sh/key), returns every range.",
+    description: "Where are the liquidation levels on a Hyperliquid perp? Where open positions would be liquidated if the price moved: notional (size x liquidation price) by price range, longs below the current price and shorts above, with running totals from the price outward. Built from every open position in our node's latest snapshot, about every 12 minutes (snapshot.age_s says how old). Cross-margin prices assume the account's other positions stay at mark. For liquidations that already happened use get_liquidation_levels. Without a key you get the 10 largest ranges within 10% of the price; any key, including a free one (https://ironflow.sh/key), returns every range.",
     inputSchema: {
       type: "object",
       properties: {
@@ -866,7 +865,7 @@ const definitions: ToolDef[] = [
   {
     name: "get_vault_leaderboard",
     title: "Vault leaderboard",
-    description: `Hyperliquid vaults ranked by net deposits (deposits minus withdrawals) over the last ${VAULT_LEADERBOARD_DAYS} days, with depositor counts. Keyless calls see the last 24 hours; a free key from https://ironflow.sh/key gives the full ${VAULT_LEADERBOARD_DAYS} days.`,
+    description: `Which Hyperliquid vaults are drawing deposits? Vaults ranked by net deposits (deposits minus withdrawals) over the last ${VAULT_LEADERBOARD_DAYS} days, with depositor counts. Keyless calls see the last 24 hours; a free key from https://ironflow.sh/key gives the full ${VAULT_LEADERBOARD_DAYS} days.`,
     inputSchema: {
       type: "object",
       properties: {
@@ -901,7 +900,7 @@ const definitions: ToolDef[] = [
   {
     name: "get_funding_stats",
     title: "Funding statistics",
-    description: "Funding statistics per time bucket for a Hyperliquid perp: average, minimum, maximum and annualized rate.",
+    description: "What is a Hyperliquid perp's average or annualized funding? Funding statistics per time bucket: average, minimum, maximum and annualized rate.",
     inputSchema: {
       type: "object",
       properties: {
@@ -930,7 +929,7 @@ const definitions: ToolDef[] = [
   {
     name: "get_user_state",
     title: "Wallet positions",
-    description: "Open positions and unrealized PnL for a Hyperliquid wallet right now, across native and HIP-3 perps. Use it for questions like 'is this wallet long or short?'",
+    description: "What positions does a Hyperliquid wallet have open? Its positions right now across native and HIP-3 perps: size, entry and mark price, leverage and unrealized PnL. Use it for 'is this wallet long or short?'. For PnL over time use get_user_pnl_series; for its trading record, get_trader_profile.",
     inputSchema: {
       type: "object",
       properties: {
@@ -948,7 +947,7 @@ const definitions: ToolDef[] = [
     name: "get_positions_at",
     title: "Wallet positions at a past time",
     description:
-      "Exact perp positions one Hyperliquid wallet held at a past moment, up to 90 days back: market, side, signed size, mark price and notional at that moment, plus today's size and how many fills it made since. Built from Hyperliquid's live positions minus the wallet's fills after that moment, so sizes are exact across native and HIP-3 perps. Needs a free API key; how far back you can go follows the key's history window. Use it for questions like 'what was this wallet holding before the crash'. For positions right now use get_user_state; for trades in between use get_fills.",
+      "What did a Hyperliquid wallet hold at a past time? Exact perp positions at a past moment, up to 90 days back: market, side, signed size, mark price and notional at that moment, plus today's size and how many fills it made since. Built from Hyperliquid's live positions minus the wallet's fills after that moment, so sizes are exact across native and HIP-3 perps. Needs a free API key; how far back you can go follows the key's history window. For positions right now use get_user_state; for trades in between use get_fills.",
     inputSchema: {
       type: "object",
       properties: {
@@ -967,7 +966,7 @@ const definitions: ToolDef[] = [
   {
     name: "get_user_funding",
     title: "Wallet funding payments",
-    description: "Funding a Hyperliquid wallet paid or received, per market per bucket: Hyperliquid's own ledger, every hourly payment back to September 2025 (Hyperliquid's API returns only daily totals that far back). Positive means received, negative means paid. bucket=1d gives daily totals, 1h the hourly payments.",
+    description: "How much funding did a Hyperliquid wallet pay or receive? Per market per bucket: Hyperliquid's own ledger, every hourly payment back to September 2025 (Hyperliquid's API returns only daily totals that far back). Positive means received, negative means paid. bucket=1d gives daily totals, 1h the hourly payments.",
     inputSchema: {
       type: "object",
       properties: {
@@ -993,7 +992,7 @@ const definitions: ToolDef[] = [
   {
     name: "get_user_maker_taker",
     title: "Wallet maker/taker split",
-    description: "Maker vs taker breakdown of a Hyperliquid wallet's fills per market: volume, fees and rebates. A high maker share with negative maker fees marks a market maker.",
+    description: "Is a Hyperliquid wallet a maker or a taker? Maker vs taker breakdown of its fills per market: volume, fees and rebates. A high maker share with negative maker fees marks a market maker.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1016,7 +1015,7 @@ const definitions: ToolDef[] = [
   {
     name: "get_user_ledger",
     title: "Wallet ledger",
-    description: "Vault deposits, withdrawals and transfers for a Hyperliquid wallet, including account deposits and withdrawals and transfers the wallet received. Positive amounts go into the account.",
+    description: "Where did a Hyperliquid wallet's money come from or go? Vault deposits, withdrawals and transfers for the wallet, including account deposits and withdrawals and transfers the wallet received. Positive amounts go into the account.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1045,7 +1044,7 @@ const definitions: ToolDef[] = [
     name: "get_pnl_leaderboard",
     title: "PnL leaderboard",
     description:
-      "Every Hyperliquid wallet ranked by realized PnL, biggest losses or volume over a window. Wallets with fewer than 5 fills in the window are left out.",
+      "Who made or lost the most on Hyperliquid? Every wallet ranked by realized PnL, biggest losses or volume over a window. Wallets with fewer than 5 fills in the window are left out.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1073,7 +1072,7 @@ const definitions: ToolDef[] = [
     name: "get_market_top_wallets",
     title: "Top wallets in a market",
     description:
-      "Top wallets on one Hyperliquid market by volume or realized PnL, up to 200 rows.",
+      "Who trades the most, or makes the most, on one Hyperliquid market? Top wallets there by volume or realized PnL over a window (default the last 24 hours), up to 200 rows.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1103,7 +1102,7 @@ const definitions: ToolDef[] = [
     name: "get_markets_snapshot",
     title: "Markets snapshot",
     description:
-      "Active Hyperliquid markets ranked in one call: mark price, 24h change, 24h volume, open interest and current hourly funding. Sort by abs_funding for the most extreme funding, abs_change_24h for the biggest movers, or volume (default). Use min_volume_usd to skip illiquid markets. Returns the top 25 unless limit is set.",
+      "What is moving on Hyperliquid right now? Active markets ranked in one call: mark price, 24h change, 24h volume, open interest and current hourly funding. Sort by abs_funding for the most extreme funding, abs_change_24h for the biggest movers, or volume (default). Use min_volume_usd to skip illiquid markets.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1144,7 +1143,7 @@ const definitions: ToolDef[] = [
     name: "get_user_summary",
     title: "Wallet summary",
     description:
-      "Totals for one Hyperliquid wallet over a time range (default the last 24 hours): fill count, volume in USD, realized PnL, fees, wins, losses, win rate and maker versus taker share, plus its current account state (open positions and margin). Use it for questions like 'how much did this wallet trade or make this week'. For a scored record with profit factor, drawdown and a per-market breakdown use get_trader_profile; for PnL over time use get_user_pnl_series.",
+      "How much did a Hyperliquid wallet trade or make? Totals over a time range (default the last 24 hours): fill count, volume in USD, realized PnL, fees, wins, losses, win rate and maker versus taker share, plus its current account state (open positions and margin). For a scored record with profit factor, drawdown and a per-market breakdown use get_trader_profile; for PnL over time use get_user_pnl_series.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1166,7 +1165,7 @@ const definitions: ToolDef[] = [
     name: "get_wallet_labels",
     title: "Wallet labels",
     description:
-      "Labels for notable Hyperliquid wallets: top whales by 24h volume, top traders by 30-day realized PnL, vaults and vault leaders. Pass addresses to check specific wallets; without them it lists the whales and smart money.",
+      "Whose wallet is this, and who are the whales on Hyperliquid? Labels for notable wallets: top whales by 24h volume, top traders by 30-day realized PnL, vaults and vault leaders. Pass addresses to check specific wallets; without them it lists the whales and smart money.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1191,7 +1190,7 @@ const definitions: ToolDef[] = [
     name: "get_user_pnl_series",
     title: "Wallet PnL curve",
     description:
-      "Realized PnL of one Hyperliquid wallet over time: buckets with realized PnL and fees paid in each, by default daily over the last 30 days. Add the buckets up for a running PnL curve. Realized only: unrealized PnL on open positions is in get_user_state. For totals over a range use get_user_summary.",
+      "How has a Hyperliquid wallet's PnL gone over time? Its realized PnL over time: buckets with realized PnL and fees paid in each, by default daily over the last 30 days. Add the buckets up for a running PnL curve. Realized only: unrealized PnL on open positions is in get_user_state. For totals over a range use get_user_summary.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1221,7 +1220,7 @@ const definitions: ToolDef[] = [
     name: "get_top_traders",
     title: "Top traders",
     description:
-      "Hyperliquid traders ranked across all markets by results over 7, 30 or 90 days: win rate, profit factor, realized PnL, max drawdown and best markets. sort=top ranks by realized PnL, lowrisk by smallest max drawdown, new by most recently first seen.",
+      "Who are the top traders on Hyperliquid this week or month? Traders ranked across all markets by results over 7, 30 or 90 days: win rate, profit factor, realized PnL, max drawdown and best markets. sort=top ranks by realized PnL, lowrisk by smallest max drawdown, new by most recently first seen. For one market use get_market_leaders.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1244,7 +1243,7 @@ const definitions: ToolDef[] = [
     name: "get_market_leaders",
     title: "Market leaders",
     description:
-      "The best traders on one Hyperliquid market, ranked by profit factor then win rate, among wallets with at least 5 closed trades there.",
+      "Who trades one Hyperliquid market best? The best traders there, ranked by profit factor then win rate, among wallets with at least 5 closed trades there.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1267,7 +1266,7 @@ const definitions: ToolDef[] = [
     name: "get_early_movers",
     title: "Early movers",
     description:
-      "Wallets whose large orders (at least $10k) on one Hyperliquid market tended to come before price moved their way within 30 minutes, over the last 7 or 30 days. Per wallet: scored orders, notional, a lead score (notional-weighted 30-minute move in the order's direction, in basis points), hit rate, last order time and the share cancelled without a fill. At least 5 scored orders per wallet; the response states the formulas. Check the wallets with get_trader_profile or get_user_state. Past activity does not predict future results.",
+      "Which wallets trade ahead of the price on a Hyperliquid market? Wallets whose large orders (at least $10k) there tended to come before price moved their way within 30 minutes, over the last 7 or 30 days. Per wallet: scored orders, notional, a lead score (notional-weighted 30-minute move in the order's direction, in basis points), hit rate, last order time and the share cancelled without a fill. At least 5 scored orders per wallet. Check the wallets with get_trader_profile or get_user_state. Past activity does not predict future results.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1290,7 +1289,7 @@ const definitions: ToolDef[] = [
     name: "get_trader_profile",
     title: "Trader profile",
     description:
-      "How good and how risky one Hyperliquid trader is over 7, 30 or 90 days, rebuilt from its fills: overall win rate, profit factor, trade count, realized PnL and max drawdown; the same numbers per market; its liquidations; and its trades from open to close with direction, timing and peak size. Use it to vet a wallet before following it. For plain totals over any time range use get_user_summary; for positions open right now use get_user_state; for style labels such as market_maker use get_wallet_behavior. A 90d window on a very active wallet can take several seconds.",
+      "Is this Hyperliquid trader any good, and how risky? Its record over 7, 30 or 90 days, rebuilt from its fills: overall win rate, profit factor, trade count, realized PnL and max drawdown; the same numbers per market; its liquidations; and its trades from open to close with direction, timing and peak size. Use it to vet a wallet before following it. For plain totals over any time range use get_user_summary; for positions open right now use get_user_state; for style labels such as market_maker use get_wallet_behavior. A 90d window on a very active wallet can take several seconds.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1312,7 +1311,7 @@ const definitions: ToolDef[] = [
   {
     name: "list_cohorts",
     title: "List cohorts",
-    description: "List available address cohorts: six predefined groups (top_pnl_30d, high_volume_30d, whale_fills, net_withdrawers_7d, liquidation_prone, vault_whales) plus any custom cohorts the caller has created",
+    description: "Which ready-made Hyperliquid wallet groups are there? Lists address cohorts: six predefined groups (top_pnl_30d, high_volume_30d, whale_fills, net_withdrawers_7d, liquidation_prone, vault_whales) plus any custom cohorts the caller has created",
     inputSchema: { type: "object", properties: {}, required: [] },
     handler: async (_args, api) => {
       const data = await api.listCohorts();
@@ -1323,7 +1322,7 @@ const definitions: ToolDef[] = [
     name: "get_cohort_addresses",
     title: "Cohort addresses",
     description:
-      "Wallet addresses in one named cohort: up to 100, each with the value the cohort ranks by (realized PnL in USD for top_pnl_30d, volume in USD for high_volume_30d), and fetched_at, when the cohort was last computed. Call list_cohorts first for the names and what each one selects. Feed the addresses to get_user_summary, get_trader_profile or get_wallet_behavior to look at each wallet.",
+      "Which wallets are in a Hyperliquid cohort? Addresses in one named cohort: up to 100, each with the value the cohort ranks by (realized PnL in USD for top_pnl_30d, volume in USD for high_volume_30d), and fetched_at, when the cohort was last computed. Call list_cohorts first for the names and what each one selects. Feed the addresses to get_user_summary, get_trader_profile or get_wallet_behavior to look at each wallet.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1343,7 +1342,7 @@ const definitions: ToolDef[] = [
   {
     name: "get_status",
     title: "API status",
-    description: "Ironflow service status right now: overall state, data freshness per venue and component health.",
+    description: "Is Ironflow up? Service status right now: overall state, data freshness per venue and component health.",
     inputSchema: { type: "object", properties: {}, required: [] },
     handler: async (_args, api) => {
       const data = await api.getStatus();
@@ -1353,7 +1352,7 @@ const definitions: ToolDef[] = [
   {
     name: "get_status_metrics",
     title: "API performance metrics",
-    description: "Ironflow performance over rolling windows: API latency and error rate, ingestion lag and synthetic probe timings.",
+    description: "How fast is Ironflow? Performance over rolling windows: API latency and error rate, ingestion lag and synthetic probe timings.",
     inputSchema: { type: "object", properties: {}, required: [] },
     handler: async (_args, api) => {
       const data = await api.getStatusMetrics();
@@ -1364,7 +1363,7 @@ const definitions: ToolDef[] = [
     name: "get_status_history",
     title: "API uptime history",
     description:
-      "Ironflow's own uptime over the last 24 hours (default) or 7 days: points over the period, each with the service status and how fresh the data was in seconds, plus the overall uptime percent. Use it to check whether a gap or odd value in other results came from an Ironflow outage. For the status right now use get_status; for API latency and error rates use get_status_metrics.",
+      "Was Ironflow down? Its own uptime over the last 24 hours (default) or 7 days: points over the period, each with the service status and how fresh the data was in seconds, plus the overall uptime percent. Use it to check whether a gap or odd value in other results came from an Ironflow outage. For the status right now use get_status; for API latency and error rates use get_status_metrics.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1386,7 +1385,7 @@ const definitions: ToolDef[] = [
     name: "list_markets",
     title: "List markets",
     description:
-      "Find how a Hyperliquid market is named: perps (native and HIP-3), spot and live HIP-4 outcomes, with symbol, class, issuer, base asset and Hyperliquid coin. Search with q (q=nvda finds xyz:NVDA-PERP and the other NVDA perps). Pages of up to 100 rows; pass pagination.next_cursor as cursor for the next page.",
+      "What is a Hyperliquid market called? Lists perps (native and HIP-3), spot and live HIP-4 outcomes with symbol, class, issuer, base asset and Hyperliquid coin. Search with q (q=nvda finds xyz:NVDA-PERP and the other NVDA perps).",
     inputSchema: {
       type: "object",
       properties: {
