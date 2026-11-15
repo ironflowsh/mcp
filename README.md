@@ -8,7 +8,7 @@ MCP server for [Ironflow](https://ironflow.sh), the agent cloud for Hyperliquid.
 - 4 manage liquidation alerts that Ironflow posts to your Discord, Slack, Telegram or webhook.
 - 8 run [Ironbox](https://ironflow.sh/ironbox), a cloud sandbox for trading agents next to Hyperliquid. Test a Hyperliquid trading bot on a paper account with 10,000 USD and live prices, or run breakout, grid and DCA strategies on it. A paper box never places a real order.
 
-No API key needed to start: keyless calls get 30 requests a minute, 100 credits a day and 24 hours of history. A free key from [ironflow.sh/key](https://ironflow.sh/key) gives 60 requests a minute, 1,000 credits a day and 14 days. A read costs 1 credit, analytics 5 and SQL 10 (see [Limits](#limits)). Agents with a USDC wallet on Base can also pay per call with x402, from $0.001, with no key and no credits ([pay per call](https://docs.ironflow.sh/guides/pay-per-call)).
+No API key needed to start: keyless calls get 30 requests a minute, 100 credits a day and 24 hours of history. A free key from [ironflow.sh/key](https://ironflow.sh/key) gives 60 requests a minute, 1,000 credits a day (up to 3,000 a month) and 14 days. A read costs 1 credit, analytics 5 and SQL 10 (see [Limits](#limits)). Agents with a USDC wallet on Base can also pay per call with x402, from $0.001, with no key and no credits ([pay per call](https://docs.ironflow.sh/guides/pay-per-call)).
 
 ## Install
 
@@ -113,7 +113,7 @@ Every call costs credits: a read 1, analytics 5 (such as the liquidation map and
 | Explorer, 49 USDC per 30 days | 100 | 25,000 a day | 90 days |
 | Builder, 149 USDC per 30 days | 1,000 | 250,000 a day | 1 year |
 
-Enterprise has no credit cap. A keyless app that names itself in its `User-Agent` gets 300 credits a day across all its IPs. Key credits count per account, all its keys together, over the UTC day and, on a free key, the UTC month. Past them a tool returns the API's error: `KEYLESS_DAILY_LIMIT` without a key, `DAILY_QUOTA_EXCEEDED` (back at 00:00 UTC) or `MONTHLY_QUOTA_EXCEEDED` (free keys, back on the 1st at 00:00 UTC) with one. Plans: [ironflow.sh/upgrade](https://ironflow.sh/upgrade). Calls paid one by one with [x402](https://docs.ironflow.sh/guides/pay-per-call) (USDC on Base, from $0.001 a call, no key) cost no credits, have free key limits and are for personal use. Every limit: [docs.ironflow.sh/concepts/rate-limits](https://docs.ironflow.sh/concepts/rate-limits).
+Enterprise has no credit cap. A keyless app that names itself in its `User-Agent` gets 300 credits a day across all its IPs. Key credits count per account, all its keys together, over the UTC day and, on a free key, the UTC month. Past them a tool returns an error: `KEYLESS_DAILY_LIMIT` without a key, `DAILY_QUOTA_EXCEEDED` (back at 00:00 UTC) or `MONTHLY_QUOTA_EXCEEDED` (free keys, back on the 1st at 00:00 UTC) with one. Without a key, a limit a free key lifts says when calls work again and how to add the key in the app in use (Claude Code, claude.ai, Cursor, VS Code or the local server). Plans: [ironflow.sh/upgrade](https://ironflow.sh/upgrade). Calls paid one by one with [x402](https://docs.ironflow.sh/guides/pay-per-call) (USDC on Base, from $0.001 a call, no key) cost no credits, have free key limits and are for personal use. Every limit: [docs.ironflow.sh/concepts/rate-limits](https://docs.ironflow.sh/concepts/rate-limits).
 
 ## Configuration
 

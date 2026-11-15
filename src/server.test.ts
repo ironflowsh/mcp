@@ -70,8 +70,22 @@ describe("first contact", () => {
   it.each(["all", "data"] as Toolset[])("%s: instructions say when to use the tools and name the first calls", async (toolset) => {
     const client = await connect({}, [], toolset);
     const instructions = client.getInstructions() ?? "";
-    expect(instructions).toContain("Use these tools when the user asks about Hyperliquid");
+    // Users ask "what's BTC funding right now?" without naming Hyperliquid.
+    expect(instructions).toContain(
+      "Use these tools for crypto market questions about prices, funding, liquidations, open interest, top traders or a 0x wallet, also when the user does not name Hyperliquid"
+    );
     for (const name of FIRST_CALLS) expect(instructions, name).toContain(name);
+    // The common questions each name their first call.
+    for (const pair of [
+      "biggest liquidations, get_liquidation_summary",
+      "liquidation levels, get_liquidation_map",
+      "funding now, get_mark_prices",
+      "top traders, get_top_traders",
+      "a wallet, get_user_state",
+    ]) {
+      expect(instructions, pair).toContain(pair);
+    }
+    expect(instructions).toContain("an error can end with a step for the user; pass it on.");
     // Older Claude Code builds cut server instructions at 2 KB.
     expect(instructions.length).toBeLessThan(2048);
     expect(instructions).not.toContain("—");
@@ -392,7 +406,7 @@ describe("API notices in tool results", () => {
       const res = (await client.callTool({ name, arguments: args })) as { isError?: boolean; content: { text: string }[] };
       expect(res.isError, name).toBe(true);
       expect(res.content[0].text, name).toBe(
-        `Error: ${name} needs an API key (a free key works). Get one in a minute at https://ironflow.sh/key?utm_source=mcp, then connect with the header Authorization: Bearer if_... (or ?key=if_... on the URL).`
+        `Error: ${name} needs an API key (a free key works). Tell the user: get a free key at https://ironflow.sh/key?utm_source=mcp (it takes a minute and gives 1,000 credits a day, up to 3,000 a month, and 14 days of history), then set IRONFLOW_API_KEY=if_... in the Ironflow server's env and restart the app.`
       );
     }
     const live = (await client.callTool({ name: "create_ironbox", arguments: { mode: "live" } })) as { isError?: boolean; content: { text: string }[] };
@@ -409,27 +423,101 @@ describe("API notices in tool results", () => {
     expect(res.structuredContent).toEqual(reply);
   });
 
-  it("returns the API's error message, with its key link, as the tool error", async () => {
-    const client = await realClient(
-      () =>
-        new Response(
-          JSON.stringify({
-            error: {
-              code: "KEYLESS_DAILY_LIMIT",
-              message:
-                'keyless access allows 100 credits per rolling 24 hours from one IP; the next call is allowed in 1 h (Retry-After). Get a free key for 1,000 credits a day, 60 requests per minute and 14 days of history, and send it as "Authorization: Bearer if_...": https://ironflow.sh/key',
-            },
-          }),
-          { status: 429, headers: { "content-type": "application/json", "Retry-After": "3600" } }
-        )
+  // The API's refusal of a keyless call past its daily credits.
+  const dailyLimit = (): Response =>
+    new Response(
+      JSON.stringify({
+        error: {
+          code: "KEYLESS_DAILY_LIMIT",
+          message:
+            'keyless access allows 100 credits per rolling 24 hours from one IP; the next call is allowed in about 6 hours (Retry-After). Get a free key for 1,000 credits a day, 60 requests per minute and 14 days of history, and send it as "Authorization: Bearer if_...": https://ironflow.sh/key, or POST https://api.ironflow.sh/v1/keys with {"email": "you@example.com"}',
+        },
+      }),
+      { status: 402, headers: { "content-type": "application/json", "Retry-After": "22347" } }
     );
+
+  it("words a keyless daily limit as what to tell the user, with the stdio key step", async () => {
+    const client = await realClient(dailyLimit);
     const res = (await client.callTool({ name: "get_recent_trades", arguments: { market: "BTC-PERP" } })) as {
       isError?: boolean;
       content: { text: string }[];
     };
     expect(res.isError).toBe(true);
-    expect(res.content[0].text).toMatch(/^Error: Ironflow API error 429 KEYLESS_DAILY_LIMIT: keyless access allows 100 credits/);
-    expect(res.content[0].text).toContain("https://ironflow.sh/key");
-    expect(res.content[0].text).toContain("Retry after 3600 s.");
+    expect(res.content[0].text).toBe(
+      "Error: Ironflow API error 402 KEYLESS_DAILY_LIMIT: the keyless allowance for this IP address is used up (100 credits in a rolling 24 hours). Every Ironflow tool fails for about 6 hours, so make no more Ironflow calls until then. Tell the user: get a free key at https://ironflow.sh/key?utm_source=mcp (it takes a minute and gives 1,000 credits a day, up to 3,000 a month, and 14 days of history), then set IRONFLOW_API_KEY=if_... in the Ironflow server's env and restart the app."
+    );
+    // The email route asks the agent for the user's email; the key page does not.
+    expect(res.content[0].text).not.toContain("/v1/keys");
+  });
+
+  it.each([
+    ["claude-code", 'run claude mcp remove ironflow, then claude mcp add --transport http ironflow https://mcp.ironflow.sh/mcp --header "Authorization: Bearer if_..."'],
+    ["claude-ai", "in Customize > Connectors remove Ironflow and add it again with the URL https://mcp.ironflow.sh/mcp?key=if_..."],
+    ["cursor-vscode", 'add "headers": {"Authorization": "Bearer if_..."} next to the Ironflow url in .cursor/mcp.json'],
+    ["Visual Studio Code", 'add "headers": {"Authorization": "Bearer if_..."} to the Ironflow server in mcp.json'],
+    ["some-agent", "send the header Authorization: Bearer if_... with the Ironflow connection, or use https://mcp.ironflow.sh/mcp?key=if_... as its URL"],
+  ])("on the hosted server, names the key step for %s", async (app, step) => {
+    vi.stubGlobal("fetch", vi.fn(async () => dailyLimit()));
+    const server = createServer(new IronflowAPI("http://api"), "test", { transport: "http" });
+    const [a, b] = InMemoryTransport.createLinkedPair();
+    await server.connect(a);
+    const client = new Client({ name: app, version: "1.0.0" });
+    await client.connect(b);
+    const res = (await client.callTool({ name: "get_liquidation_map", arguments: { market: "ETH" } })) as {
+      isError?: boolean;
+      content: { text: string }[];
+    };
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toContain(`Tell the user: get a free key at https://ironflow.sh/key?utm_source=mcp`);
+    expect(res.content[0].text.endsWith(`, then ${step}.`), res.content[0].text).toBe(true);
+    // claude.ai calls from shared IP addresses, so its users share the allowance.
+    expect(res.content[0].text.includes("claude.ai connects from shared IP addresses")).toBe(app === "claude-ai");
+  });
+
+  it("keeps the API's text for a key holder's limit", async () => {
+    const message = "This call costs 5 credits, and this account (free plan, all its keys together) has 3 of its 1,000 credits left for today.";
+    const client = await realClient(
+      () =>
+        new Response(JSON.stringify({ error: { code: "DAILY_QUOTA_EXCEEDED", message } }), {
+          status: 429,
+          headers: { "content-type": "application/json", "Retry-After": "3600" },
+        }),
+      "if_test_key_123"
+    );
+    const res = (await client.callTool({ name: "get_recent_trades", arguments: { market: "BTC-PERP" } })) as {
+      content: { text: string }[];
+    };
+    expect(res.content[0].text).toBe(`Error: Ironflow API error 429 DAILY_QUOTA_EXCEEDED: ${message} Retry after 3600 s.`);
+  });
+
+  it("adds the key step to other keyless limits a key lifts", async () => {
+    const client = await realClient(
+      () =>
+        new Response(JSON.stringify({ error: { code: "HISTORY_OUT_OF_RANGE", message: "keyless access reaches 24 hours back" } }), {
+          status: 403,
+          headers: { "content-type": "application/json" },
+        })
+    );
+    const res = (await client.callTool({ name: "get_recent_trades", arguments: { market: "BTC-PERP" } })) as {
+      content: { text: string }[];
+    };
+    expect(res.content[0].text).toMatch(
+      /^Error: Ironflow API error 403 HISTORY_OUT_OF_RANGE: keyless access reaches 24 hours back\. A free key lifts this\. Tell the user: get a free key at https:\/\/ironflow\.sh\/key\?utm_source=mcp/
+    );
+  });
+
+  it("tags a QA check's API calls with a qa_check client name", async () => {
+    const fetchMock = vi.fn(
+      async () => new Response(JSON.stringify({ data: [{ mark_price: "100" }] }), { headers: { "content-type": "application/json" } })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const server = createServer(new IronflowAPI("http://api"), "test", { transport: "http", qaCheck: true });
+    const [a, b] = InMemoryTransport.createLinkedPair();
+    await server.connect(a);
+    const client = new Client({ name: "claude-code", version: "2.1.0" });
+    await client.connect(b);
+    await client.callTool({ name: "get_price", arguments: { market: "BTC-PERP" } });
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect((init.headers as Record<string, string>)["X-Ironflow-Client"]).toBe("qa_check claude-code/2.1.0");
   });
 });

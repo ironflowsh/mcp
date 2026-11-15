@@ -41,6 +41,20 @@ export interface UpstreamCall {
   code?: string;
 }
 
+// ApiError is a refused API request: the message the agent reads, plus the
+// status, error code and Retry-After seconds, so the server can word a limit
+// for the client in use (limits.ts).
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: string,
+    readonly retryAfterS?: number
+  ) {
+    super(message);
+  }
+}
+
 export class IronflowAPI {
   private baseUrl: string;
   private apiKey?: string;
@@ -162,10 +176,11 @@ export class IronflowAPI {
 
   // apiError keeps the API's code, message and detail: the message names the
   // next step (a free key, a narrower window), which the agent passes on.
-  private async apiError(res: Response): Promise<Error> {
+  private async apiError(res: Response): Promise<ApiError> {
     const text = await res.text();
     const retry = Number(res.headers.get("retry-after"));
-    const retryNote = Number.isFinite(retry) && retry > 0 ? ` Retry after ${retry} s.` : "";
+    const retryAfterS = Number.isFinite(retry) && retry > 0 ? retry : undefined;
+    const retryNote = retryAfterS ? ` Retry after ${retryAfterS} s.` : "";
     try {
       const parsed = JSON.parse(text) as {
         error?: { code?: string; message?: string; detail?: string; did_you_mean?: unknown };
@@ -175,13 +190,13 @@ export class IronflowAPI {
       const detail = parsed.error?.detail ? ` (${parsed.error.detail})` : "";
       this.record(res.status, code);
       if (code) {
-        return new Error(`Ironflow API error ${res.status} ${code}: ${message}${detail}${retryNote}`);
+        return new ApiError(`Ironflow API error ${res.status} ${code}: ${message}${detail}${retryNote}`, res.status, code, retryAfterS);
       }
     } catch {
       // Non-JSON response — fall through to raw text.
       this.record(res.status);
     }
-    return new Error(`Ironflow API error ${res.status}: ${text}${retryNote}`);
+    return new ApiError(`Ironflow API error ${res.status}: ${text}${retryNote}`, res.status, undefined, retryAfterS);
   }
 
   // get sends a GET with the given query. Empty values are left out, except
