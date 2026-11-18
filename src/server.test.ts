@@ -3,7 +3,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createServer, type ToolOutcome } from "./server.js";
 import { IronflowAPI } from "./api.js";
-import { ALERT_TOOLS, IRONBOX_TOOLS, type Toolset } from "./tools.js";
+import { ALERT_TOOLS, type Toolset } from "./tools.js";
 
 async function connect(api: Partial<IronflowAPI>, outcomes: ToolOutcome[], toolset?: Toolset): Promise<Client> {
   const stub = { notice: () => "", hasKey: () => true, ...api, withContext: () => stub } as unknown as IronflowAPI;
@@ -37,15 +37,11 @@ describe("tool listing", () => {
   it("gives every tool a title and annotations that say what it changes", async () => {
     const client = await connect({}, []);
     const { tools } = await client.listTools();
-    expect(tools.length).toBe(54);
+    expect(tools.length).toBe(46);
     const writes: Record<string, { destructive: boolean; idempotent: boolean }> = {
       create_liquidation_alert: { destructive: false, idempotent: false },
       test_liquidation_alert: { destructive: false, idempotent: false },
       delete_liquidation_alert: { destructive: true, idempotent: true },
-      create_ironbox: { destructive: false, idempotent: false },
-      delete_ironbox: { destructive: true, idempotent: true },
-      start_box_strategy: { destructive: false, idempotent: false },
-      stop_box_strategy: { destructive: true, idempotent: true },
     };
     for (const t of tools) {
       expect(t.title?.trim(), t.name).toBeTruthy();
@@ -112,10 +108,10 @@ describe("first contact", () => {
     }
   });
 
-  it("lists the alert and Ironbox tools last", async () => {
+  it("lists the alert tools last", async () => {
     const client = await connect({}, []);
     const names = (await client.listTools()).tools.map((t) => t.name);
-    expect(names.slice(-12)).toEqual([...ALERT_TOOLS, ...IRONBOX_TOOLS]);
+    expect(names.slice(-4)).toEqual([...ALERT_TOOLS]);
   });
 
   it.each(["all", "data"] as Toolset[])("%s: offers prompts a client can show as starts", async (toolset) => {
@@ -133,29 +129,30 @@ describe("first contact", () => {
 });
 
 describe("toolsets", () => {
-  it("serves the Ironbox tools and their instruction by default", async () => {
+  it("serves the alert tools and their instruction by default", async () => {
     const client = await connect({}, []);
     const names = (await client.listTools()).tools.map((t) => t.name);
-    expect(names).toContain("create_ironbox");
-    expect(client.getInstructions()).toContain("spin up its own Ironbox with create_ironbox");
+    expect(names).toContain("create_liquidation_alert");
+    expect(client.getInstructions()).toContain("create_liquidation_alert posts liquidations");
+    expect(client.getInstructions()).not.toMatch(/Ironbox|paper|sandbox/i);
   });
 
-  it("data hides the Ironbox and alert tools and their instructions, and will not call them", async () => {
+  it("data hides the alert tools and their instructions, and will not call them", async () => {
     const outcomes: ToolOutcome[] = [];
     const post = vi.fn();
     const del = vi.fn();
     const client = await connect({ post, del }, outcomes, "data");
     const names = (await client.listTools()).tools.map((t) => t.name);
     expect(names).toHaveLength(42);
-    expect(names.some((n) => n.includes("ironbox") || n.includes("alert") || n.includes("box_"))).toBe(false);
+    expect(names.some((n) => n.includes("alert"))).toBe(false);
     const instructions = client.getInstructions() ?? "";
-    expect(instructions).not.toMatch(/Ironbox|alert|x402|pay per call|free key|ironflow\.sh\/key/i);
+    expect(instructions).not.toMatch(/alert|x402|pay per call|free key|ironflow\.sh\/key/i);
     expect(instructions).toContain("Every tool only reads.");
     expect(instructions).toContain(
       "Each call costs credits: 1 for a read, 5 for analytics, 10 for run_query, none for describe_data or status. Keyless use allows 30 requests a minute, 100 credits a day and 24 hours of history. Limits: https://docs.ironflow.sh/concepts/rate-limits."
     );
     expect(client.getServerVersion()?.description).not.toMatch(/alert/i);
-    for (const name of ["create_ironbox", "create_liquidation_alert", "delete_liquidation_alert", "test_liquidation_alert"]) {
+    for (const name of ["create_liquidation_alert", "delete_liquidation_alert", "test_liquidation_alert"]) {
       const res = (await client.callTool({ name, arguments: { id: "6f1c2a3b-0000-4000-8000-000000000000" } })) as {
         isError?: boolean;
         content: { text: string }[];
@@ -320,74 +317,9 @@ describe("API notices in tool results", () => {
     expect(res.structuredContent).toEqual({ market: "BTC-PERP", price: "100" });
   });
 
-  it("create_ironbox posts to /v1/ironbox with the key and returns the new Ironbox", async () => {
-    const box = { id: "ibx_01JC7W2K", state: "creating", size: "small", mode: "paper", runtime: "python", region: "tokyo" };
-    const fetchMock = vi.fn(
-      async () => new Response(JSON.stringify(box), { status: 201, headers: { "content-type": "application/json" } })
-    );
-    vi.stubGlobal("fetch", fetchMock);
-    const server = createServer(new IronflowAPI("http://api", "if_test"), "test");
-    const [a, b] = InMemoryTransport.createLinkedPair();
-    await server.connect(a);
-    const client = new Client({ name: "test", version: "1" });
-    await client.connect(b);
-    const res = (await client.callTool({ name: "create_ironbox", arguments: { markets: ["perps"] } })) as {
-      structuredContent: Record<string, unknown>;
-    };
-    expect(res.structuredContent).toEqual(box);
-    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toBe("http://api/v1/ironbox");
-    expect(init.method).toBe("POST");
-    expect(JSON.parse(init.body as string)).toEqual({ mode: "paper", markets: ["perps"] });
-    expect((init.headers as Record<string, string>)["Authorization"]).toBe("Bearer if_test");
-  });
-
-  it("delete_ironbox returns the deleted Ironbox", async () => {
-    const client = await realClient(
-      () => new Response(JSON.stringify({ id: "ibx_01JC7W2K", state: "deleted" }), { headers: { "content-type": "application/json" } }),
-      "if_test"
-    );
-    const res = (await client.callTool({ name: "delete_ironbox", arguments: { id: "ibx_01JC7W2K" } })) as {
-      structuredContent: Record<string, unknown>;
-    };
-    expect(res.structuredContent).toEqual({ id: "ibx_01JC7W2K", state: "deleted" });
-  });
-
-  it("create_ironbox works with no key: it posts without Authorization and returns the trial box", async () => {
-    const trial = {
-      id: "ibx_3f9a0c7e12d4",
-      state: "running",
-      mode: "paper",
-      paper: true,
-      trial: true,
-      base_url: "https://api.ironflow.sh/box/ibxs_test",
-      expires_at: 1762606400000,
-      message: "Trial paper box, removed after 24 hours. A free key keeps a box: https://ironflow.sh/key?utm_source=api",
-    };
-    const fetchMock = vi.fn(
-      async () => new Response(JSON.stringify(trial), { status: 201, headers: { "content-type": "application/json" } })
-    );
-    vi.stubGlobal("fetch", fetchMock);
-    const server = createServer(new IronflowAPI("http://api"), "test");
-    const [a, b] = InMemoryTransport.createLinkedPair();
-    await server.connect(a);
-    const client = new Client({ name: "test", version: "1" });
-    await client.connect(b);
-    const res = (await client.callTool({ name: "create_ironbox", arguments: {} })) as {
-      isError?: boolean;
-      structuredContent: Record<string, unknown>;
-    };
-    expect(res.isError).toBeFalsy();
-    expect(res.structuredContent).toEqual(trial);
-    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toBe("http://api/v1/ironbox");
-    expect(init.method).toBe("POST");
-    expect((init.headers as Record<string, string>)["Authorization"]).toBeUndefined();
-  });
-
   it("without a key, key-only tools say how to get one and never call the API", async () => {
     // 8 of 116 MCP-made calls in the week to 2026-11-12 were keyless calls
-    // of list_ironboxes and list_liquidation_alerts answered a bare 401.
+    // of key-only tools answered a bare 401.
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     const server = createServer(new IronflowAPI("http://api"), "test");
@@ -400,8 +332,6 @@ describe("API notices in tool results", () => {
       ["create_liquidation_alert", { url: "https://hooks.slack.com/services/T0/B0/x" }],
       ["test_liquidation_alert", { id: "6f1c2a3b-0000-4000-8000-000000000000" }],
       ["delete_liquidation_alert", { id: "6f1c2a3b-0000-4000-8000-000000000000" }],
-      ["get_ironbox", { id: "ibx_01JC7W2K" }],
-      ["delete_ironbox", { id: "ibx_01JC7W2K" }],
     ] as const) {
       const res = (await client.callTool({ name, arguments: args })) as { isError?: boolean; content: { text: string }[] };
       expect(res.isError, name).toBe(true);
@@ -409,18 +339,7 @@ describe("API notices in tool results", () => {
         `Error: ${name} needs an API key (a free key works). Tell the user: get a free key at https://ironflow.sh/key?utm_source=mcp (it takes a minute and gives 1,000 credits a day, up to 3,000 a month, and 14 days of history), then set IRONFLOW_API_KEY=if_... in the Ironflow server's env and restart the app.`
       );
     }
-    const live = (await client.callTool({ name: "create_ironbox", arguments: { mode: "live" } })) as { isError?: boolean; content: { text: string }[] };
-    expect(live.isError).toBe(true);
-    expect(live.content[0].text).toBe("Error: Ironbox runs on paper only: simulated funds, never a real order. Leave mode out to get a paper box.");
     expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it("without a key, list_ironboxes still asks the API, which says how to get a trial box", async () => {
-    const reply = { data: [], message: "No API key, so no saved Ironboxes. POST https://api.ironflow.sh/v1/ironbox makes a 24-hour trial paper box with no key." };
-    const client = await realClient(() => new Response(JSON.stringify(reply), { headers: { "content-type": "application/json" } }));
-    const res = (await client.callTool({ name: "list_ironboxes", arguments: {} })) as { isError?: boolean; structuredContent: Record<string, unknown> };
-    expect(res.isError).toBeFalsy();
-    expect(res.structuredContent).toEqual(reply);
   });
 
   // The API's refusal of a keyless call past its daily credits.

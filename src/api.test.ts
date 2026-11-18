@@ -66,11 +66,11 @@ describe("IronflowAPI upstream calls", () => {
   it("del returns a JSON body, and nothing for 204", async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "ibx_1", state: "deleted" }), { headers: { "content-type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "a1", deleted: true }), { headers: { "content-type": "application/json" } }))
       .mockResolvedValueOnce(new Response(null, { status: 204 }));
     vi.stubGlobal("fetch", fetchMock);
     const api = new IronflowAPI("http://api");
-    expect(await api.del("/v1/ironbox/ibx_1")).toEqual({ id: "ibx_1", state: "deleted" });
+    expect(await api.del("/v1/alerts/a1")).toEqual({ id: "a1", deleted: true });
     expect(await api.del("/v1/alerts/x")).toBeUndefined();
     expect((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].method).toBe("DELETE");
   });

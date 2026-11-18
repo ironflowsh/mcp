@@ -39,12 +39,8 @@ export interface ToolDef {
   needsKey?: (args: Record<string, unknown>) => boolean;
 }
 
-// Alerts and boxes belong to an account, so these tools need a key.
+// Alerts belong to an account, so these tools need a key.
 const always = (): boolean => true;
-
-// Ironbox is paper only: simulated funds, never a real order. A client that
-// still sends another mode (an old cached schema) gets a plain refusal.
-export const PAPER_ONLY = "Ironbox runs on paper only: simulated funds, never a real order. Leave mode out to get a paper box.";
 
 // keyRequiredText is the answer to a keyless call of a key-only tool, with
 // how to add the key in the client in use (limits.ts).
@@ -123,82 +119,6 @@ function alertId(args: Record<string, unknown>): string {
     throw new Error("id must be an alert id such as 6f1c2a3b-... (list_liquidation_alerts lists them)");
   }
   return id;
-}
-
-// ironboxId reads an Ironbox id (ibx_...): letters, digits, _ and - only, so
-// it cannot reach another path.
-function ironboxId(args: Record<string, unknown>): string {
-  const id = requireString(args, "id").trim();
-  if (!/^ibx_[A-Za-z0-9_-]{1,64}$/.test(id)) {
-    throw new Error("id must be an Ironbox id such as ibx_... (list_ironboxes lists them)");
-  }
-  return id;
-}
-
-// boxSecret reads a paper box's URL or its bare secret and returns the secret,
-// so a tool can only ever reach /box/<secret> on the Ironflow API.
-function boxSecret(args: Record<string, unknown>): string {
-  const match = /(?:^|\/box\/)(ibxs_[0-9a-f]{64})(?:[/?#]|$)/.exec(requireString(args, "box").trim());
-  if (!match) {
-    throw new Error("box must be the box's base_url from create_ironbox, or its ibxs_ secret");
-  }
-  return match[1];
-}
-
-// strategyId reads a strategy id: hex after a fixed prefix, so it cannot reach
-// another path.
-function strategyId(args: Record<string, unknown>): string {
-  const id = requireString(args, "strategy_id").trim();
-  if (!/^strat_[0-9a-f]{16}$/.test(id)) {
-    throw new Error("strategy_id must be an id such as strat_9f2c4a7e1b3d5c60 (list_box_strategies lists them)");
-  }
-  return id;
-}
-
-// strategyBody copies the parameters the agent set, and nothing else, into
-// the strategy request. The engine refuses anything it does not know.
-const STRATEGY_FIELDS = [
-  "kind", "market", "side", "size_usd", "leverage", "max_loss_usd", "lower_px", "upper_px", "grids",
-  "lookback_bars", "exit_bars", "bar_seconds", "tranche_usd", "budget_usd", "dip_pct",
-  "interval_minutes", "take_profit_pct", "repeat",
-];
-
-// The engine reads the grid prices as text and the sizes, counts and
-// percentages as numbers; agents send either form for both.
-const STRATEGY_TEXT_FIELDS = new Set(["kind", "market", "side", "lower_px", "upper_px"]);
-const STRATEGY_FLAG_FIELDS = new Set(["repeat"]);
-
-function strategyValue(key: string, val: unknown): unknown {
-  if (STRATEGY_TEXT_FIELDS.has(key)) {
-    return typeof val === "number" && Number.isFinite(val) ? String(val) : val;
-  }
-  if (STRATEGY_FLAG_FIELDS.has(key)) {
-    return val === "true" ? true : val === "false" ? false : val;
-  }
-  if (typeof val === "string" && val.trim() !== "" && Number.isFinite(Number(val))) return Number(val);
-  return val;
-}
-
-function strategyBody(args: Record<string, unknown>): Record<string, unknown> {
-  const body: Record<string, unknown> = {};
-  for (const key of STRATEGY_FIELDS) {
-    if (args[key] !== undefined && args[key] !== "") body[key] = strategyValue(key, args[key]);
-  }
-  return body;
-}
-
-const BOX_ARG = { type: "string", description: "The paper box: its base_url from create_ironbox, or the ibxs_ secret" };
-
-// ironboxMarkets reads markets as a list or a comma-separated string, as
-// agents send either, and gives the API a list.
-function ironboxMarkets(args: Record<string, unknown>): string[] | undefined {
-  const val = args.markets;
-  if (val === undefined || val === null || val === "") return undefined;
-  const list = typeof val === "string" ? val.split(",") : val;
-  if (!Array.isArray(list) || !list.every((m) => typeof m === "string")) {
-    throw new Error('"markets" must be a list such as ["perps", "spot"]');
-  }
-  return list.map((m) => m.trim().toLowerCase()).filter(Boolean);
 }
 
 const MARKET ="Market: BTC-PERP, xyz:NVDA-PERP, HYPE/USDC, or a Hyperliquid name (BTC, @107, xyz:NVDA)";
@@ -536,160 +456,6 @@ const definitions: ToolDef[] = [
       return JSON.stringify({ deleted: true, id });
     },
   },
-  {
-    name: "create_ironbox",
-    title: "Spin up an Ironbox",
-    description:
-      "Spin up an Ironbox: a secure sandbox next to Hyperliquid where an agent trades on paper, with Ironflow data, analytics and alerts built in. No key needed: you get a trial box, the agent's own simulated Hyperliquid account for 24 hours, with base_url and expires_at. It ends sooner after 2 hours with no requests and no strategy running. Point the Hyperliquid SDK's base_url at it, or start a strategy on it with start_box_strategy. A free key keeps a box. A paper box never places a real order.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        name: { type: "string", description: "Name for the Ironbox, e.g. btc-funding-bot" },
-        size: { type: "string", enum: ["small", "medium", "large"], description: "small (default), medium or large" },
-        runtime: { type: "string", enum: ["python", "node"], description: "python (default) or node" },
-        markets: {
-          type: "array",
-          items: { type: "string", enum: ["perps", "outcomes", "spot"] },
-          description: "Hyperliquid markets the agent trades: perps, outcomes (HIP-4), spot",
-        },
-        note: { type: "string", description: "Free text kept with the Ironbox, e.g. what the agent does" },
-      },
-      required: [],
-    },
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
-    handler: async (args, api) => {
-      const mode = optionalString(args, "mode", "paper").trim().toLowerCase() || "paper";
-      if (mode !== "paper") throw new Error(PAPER_ONLY);
-      const body: Record<string, unknown> = { mode: "paper" };
-      for (const key of ["name", "size", "runtime", "note"]) {
-        const val = optionalString(args, key, "").trim();
-        if (val) body[key] = val;
-      }
-      const markets = ironboxMarkets(args);
-      if (markets) body.markets = markets;
-      return JSON.stringify(await api.post("/v1/ironbox", body), null, 2);
-    },
-  },
-  {
-    name: "list_ironboxes",
-    title: "List Ironboxes",
-    description:
-      "The Ironboxes on this API key's account, the sandboxes where agents trade on paper next to Hyperliquid: id, name, state (creating, running, stopped, deleted or error), size, mode, runtime and markets. Without a key there are no saved boxes, and the answer says how to make a trial box with create_ironbox.",
-    inputSchema: { type: "object", properties: {}, required: [] },
-    handler: async (_args, api) => JSON.stringify(await api.get("/v1/ironbox"), null, 2),
-  },
-  {
-    name: "get_ironbox",
-    title: "Get Ironbox",
-    description:
-      "Needs an API key (a free key works). One Ironbox by id: its state (creating, running, stopped, deleted or error), size, mode, runtime, Hyperliquid markets and region.",
-    inputSchema: {
-      type: "object",
-      properties: { id: { type: "string", description: "Ironbox id (ibx_...) from create_ironbox or list_ironboxes" } },
-      required: ["id"],
-    },
-    needsKey: always,
-    handler: async (args, api) => JSON.stringify(await api.get(`/v1/ironbox/${ironboxId(args)}`), null, 2),
-  },
-  {
-    name: "delete_ironbox",
-    title: "Delete Ironbox",
-    description: "Needs an API key (a free key works). Stop and delete one Ironbox from this API key's account; the agent in it stops running on Hyperliquid.",
-    inputSchema: {
-      type: "object",
-      properties: { id: { type: "string", description: "Ironbox id (ibx_...) from list_ironboxes" } },
-      required: ["id"],
-    },
-    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
-    needsKey: always,
-    handler: async (args, api) => {
-      const id = ironboxId(args);
-      return JSON.stringify((await api.del(`/v1/ironbox/${id}`)) ?? { id, state: "deleted" }, null, 2);
-    },
-  },
-  {
-    name: "start_box_strategy",
-    title: "Start a strategy on a paper box",
-    description:
-      "Start a strategy on a Hyperliquid paper box: it runs around the clock with no client connected, in simulation only. No key needed, the box URL authorises it, so a trial box from create_ironbox works. kind is breakout (size_usd, lookback_bars, exit_bars, bar_seconds), grid (lower_px, upper_px, grids, size_usd) or dca (tranche_usd, budget_usd, dip_pct, interval_minutes, take_profit_pct, repeat). Every kind needs market and max_loss_usd: when the net loss reaches it, the strategy closes its position and stops. At most 3 per box, one per market. Follow it with get_box_activity.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        box: BOX_ARG,
-        kind: { type: "string", enum: ["breakout", "grid", "dca"], description: "Which strategy" },
-        market: { type: "string", description: "A live main perp, by display symbol or Hyperliquid name, e.g. BTC-PERP or BTC" },
-        max_loss_usd: { type: "number", description: "Net loss in USD that stops the strategy (required)" },
-        side: { type: "string", enum: ["long", "short", "both"], description: "breakout: long, short or both (default both). grid and dca: long (default) or short" },
-        size_usd: { type: "number", description: "breakout: notional of each entry. grid: total across the ladder, at least 10 a level" },
-        leverage: { type: "number", description: "Cross leverage on this market, default 3" },
-        lower_px: { type: "string", description: "grid: bottom of the ladder" },
-        upper_px: { type: "string", description: "grid: top of the ladder" },
-        grids: { type: "number", description: "grid: rungs, 2 to 25, default 10" },
-        lookback_bars: { type: "number", description: "breakout: entry channel, 5 to 120 bars, default 20" },
-        exit_bars: { type: "number", description: "breakout: exit channel, default half of lookback_bars" },
-        bar_seconds: { type: "number", description: "breakout: 60 (default), 300 or 900" },
-        tranche_usd: { type: "number", description: "dca: notional of each entry" },
-        budget_usd: { type: "number", description: "dca: total notional across the cycle" },
-        dip_pct: { type: "number", description: "dca: move against the last entry that buys the next tranche, default 3" },
-        interval_minutes: { type: "number", description: "dca: also buy a tranche after this long" },
-        take_profit_pct: { type: "number", description: "dca: close the stack at this gain on the average entry" },
-        repeat: { type: "boolean", description: "dca: start a new cycle after a take profit" },
-      },
-      required: ["box", "kind", "market", "max_loss_usd"],
-    },
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
-    handler: async (args, api) =>
-      JSON.stringify(await api.post(`/box/${boxSecret(args)}/strategies`, strategyBody(args)), null, 2),
-  },
-  {
-    name: "list_box_strategies",
-    title: "List a paper box's strategies",
-    description: "The strategies on a Hyperliquid paper box, running and recently stopped, each with its status, stop reason and result. Needs only the box URL.",
-    inputSchema: { type: "object", properties: { box: BOX_ARG }, required: ["box"] },
-    handler: async (args, api) => JSON.stringify(await api.get(`/box/${boxSecret(args)}/strategies`), null, 2),
-  },
-  {
-    name: "stop_box_strategy",
-    title: "Stop a strategy on a paper box",
-    description:
-      "Stop one strategy on a Hyperliquid paper box: its orders are cancelled and its position is closed at the book, unless close_position is false. The answer says stopping until the close fills, then list_box_strategies shows stopped. Needs only the box URL.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        box: BOX_ARG,
-        strategy_id: { type: "string", description: "strat_... from start_box_strategy or list_box_strategies" },
-        close_position: { type: "boolean", description: "false leaves its position open on the box; default true" },
-      },
-      required: ["box", "strategy_id"],
-    },
-    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
-    handler: async (args, api) => {
-      const query = args.close_position === false ? "?close_position=false" : "";
-      return JSON.stringify(await api.del(`/box/${boxSecret(args)}/strategies/${strategyId(args)}${query}`), null, 2);
-    },
-  },
-  {
-    name: "get_box_activity",
-    title: "Watch a paper box",
-    description:
-      "What a Hyperliquid paper box and its strategies really did: strategy started, decisions with their reasons, orders, fills, funding, stops, plus equity, PnL, fees and positions. Call it with no after for the latest events, then pass next_cursor as after. gap true means some events were missed. Needs only the box URL.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        box: BOX_ARG,
-        after: { type: "number", description: "next_cursor from the previous answer" },
-        limit: { type: "number", description: "Events to return, 1 to 200, default 100" },
-      },
-      required: ["box"],
-    },
-    handler: async (args, api) => {
-      const params: Record<string, string> = {};
-      if (args.after !== undefined) params.after = String(optionalNumber(args, "after", 0));
-      if (args.limit !== undefined) params.limit = String(optionalNumber(args, "limit", 100));
-      return JSON.stringify(await api.get(`/box/${boxSecret(args)}/activity`, params), null, 2);
-    },
-  },
-
   {
     name: "get_auto_deleveraging",
     title: "Auto-deleveraging fills",
@@ -1431,25 +1197,19 @@ const definitions: ToolDef[] = [
 
 // A toolset picks the tools a server serves. "data" is the build for
 // assistant directories (mcp.ironflow.sh/mcp?toolset=data), whose rules take
-// read-only data tools only: it leaves out the Ironbox tools, which run an
-// agent that trades, and the alert tools, which change an account and post
-// to outside channels. What is left only reads, needs no key, and carries no
+// read-only data tools only: it leaves out the alert tools, which change an
+// account and post to outside channels. What is left only reads, needs no key, and carries no
 // plan, x402 or key sign-up lines (plain.ts).
 export type Toolset = "all" | "data";
-
-export const IRONBOX_TOOLS = [
-  "create_ironbox", "list_ironboxes", "get_ironbox", "delete_ironbox",
-  "start_box_strategy", "list_box_strategies", "stop_box_strategy", "get_box_activity",
-];
 
 export const ALERT_TOOLS = [
   "create_liquidation_alert", "list_liquidation_alerts", "test_liquidation_alert", "delete_liquidation_alert",
 ];
 
-const NOT_DATA = new Set([...IRONBOX_TOOLS, ...ALERT_TOOLS]);
+const NOT_DATA = new Set(ALERT_TOOLS);
 
 // tools/list order. The tools the server instructions name come first, then
-// the other read tools, the status tools, and the alert and Ironbox tools
+// the other read tools, the status tools, and the alert tools
 // last. Some clients pass only the first tools of a long list to the model
 // (Cursor's limit was 40), and a model reads the top of the list first.
 const FIRST = [
@@ -1458,7 +1218,7 @@ const FIRST = [
   "get_user_state", "get_user_pnl_series", "get_user_funding", "get_top_traders",
   "get_market_top_wallets", "list_markets", "describe_data", "run_query",
 ];
-const LAST = ["get_status", "get_status_metrics", "get_status_history", ...ALERT_TOOLS, ...IRONBOX_TOOLS];
+const LAST = ["get_status", "get_status_metrics", "get_status_history", ...ALERT_TOOLS];
 
 function listingOrder(defs: ToolDef[]): ToolDef[] {
   const rank = (name: string): number => {

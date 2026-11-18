@@ -260,8 +260,8 @@ export class IronflowAPI {
     return res.json();
   }
 
-  // del sends a DELETE. Alerts answer 204 with no body (undefined); an
-  // Ironbox answers with the deleted object, which is returned.
+  // del sends a DELETE. Alerts answer 204 with no body (undefined); a JSON
+  // body, when there is one, is returned.
   async del(path: string): Promise<unknown> {
     const url = new URL(path, this.baseUrl);
     const res = await fetch(url.toString(), { method: "DELETE", headers: this.headers() });

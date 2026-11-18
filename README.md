@@ -1,12 +1,11 @@
 # @ironflowsh/mcp
 
-MCP server for [Ironflow](https://ironflow.sh), the agent cloud for Hyperliquid. It gives Claude, Cursor and any MCP client Hyperliquid market data, wallet analytics, liquidation alerts and Ironbox sandboxes. It covers native perps, HIP-3 builder markets, HIP-4 outcome markets and spot, with every fill since 25 May 2025.
+MCP server for [Ironflow](https://ironflow.sh), Hyperliquid data from our own nodes. It gives Claude, Cursor and any MCP client Hyperliquid market data, wallet analytics and liquidation alerts. It covers native perps, HIP-3 builder markets, HIP-4 outcome markets and spot, with every fill since 25 May 2025.
 
-54 tools:
+46 tools:
 
 - 42 read data, including `run_query` for read-only SQL over every fill, wallet, funding and liquidation table.
 - 4 manage liquidation alerts that Ironflow posts to your Discord, Slack, Telegram or webhook.
-- 8 run [Ironbox](https://ironflow.sh/ironbox), a cloud sandbox for trading agents next to Hyperliquid. Test a Hyperliquid trading bot on a paper account with 10,000 USD and live prices, or run breakout, grid and DCA strategies on it. A paper box never places a real order.
 
 No API key needed to start: keyless calls get 30 requests a minute, 100 credits a day and 24 hours of history. A free key from [ironflow.sh/key](https://ironflow.sh/key) gives 60 requests a minute, 1,000 credits a day (up to 3,000 a month) and 14 days. A read costs 1 credit, analytics 5 and SQL 10 (see [Limits](#limits)). Agents with a USDC wallet on Base can also pay per call with x402, from $0.001, with no key and no credits ([pay per call](https://docs.ironflow.sh/guides/pay-per-call)).
 
@@ -96,7 +95,7 @@ To host the HTTP server yourself: `npx -y -p @ironflowsh/mcp ironflow-mcp-http` 
 
 **Liquidation alerts** (need an API key; a free key allows one): `create_liquidation_alert` has Ironflow post matching liquidations to a Discord channel, Slack channel, Telegram chat or HTTPS webhook within seconds, filtered by market, side, size and wallet, and keeps posting after the conversation ends; `list_liquidation_alerts`, `test_liquidation_alert` and `delete_liquidation_alert` manage them. Guide: [docs.ironflow.sh/guides/liquidation-alerts](https://docs.ironflow.sh/guides/liquidation-alerts).
 
-**Ironbox**: `create_ironbox` spins up a secure sandbox next to Hyperliquid where an agent trades on paper. With no key it makes a 24-hour trial paper box; a free key keeps a box. `start_box_strategy`, `list_box_strategies`, `stop_box_strategy` and `get_box_activity` run breakout, grid and DCA strategies on a paper box with no client connected, and need only its URL. `get_ironbox` and `delete_ironbox` need a key; `list_ironboxes` without a key says how to make a trial box. Called without a key, a tool that needs one answers with the free key link instead of calling the API. `https://mcp.ironflow.sh/data` serves only the 42 read-only data tools, without the alert and Ironbox tools.
+Called without a key, a tool that needs one answers with the free key link instead of calling the API. `https://mcp.ironflow.sh/data` serves only the 42 read-only data tools, without the alert tools.
 
 **Prompts:** `biggest_liquidations`, `liquidation_map`, `market_movers` and `wallet_check` are ready-made starts. Claude Code shows them as slash commands; other clients list them in a prompt menu. Each asks only for read-only tools, on both addresses.
 
