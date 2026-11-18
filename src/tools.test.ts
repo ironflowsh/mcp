@@ -1,7 +1,7 @@
 // Unit tests for MCP tool handlers.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { ALERT_TOOLS, IRONBOX_TOOLS, tools, toolsFor } from "./tools.js";
+import { ALERT_TOOLS, tools, toolsFor } from "./tools.js";
 import { outputSchemas } from "./schemas.js";
 import { structuredFrom } from "./server.js";
 import type { IronflowAPI } from "./api.js";
@@ -29,16 +29,16 @@ function findTool(name: string) {
 // ─── Tool listing ─────────────────────────────────────────────────────────────
 
 describe("tools array", () => {
-  it("exports 54 tools", () => {
-    expect(tools).toHaveLength(54);
+  it("exports 46 tools", () => {
+    expect(tools).toHaveLength(46);
   });
 
-  it("the data toolset leaves out the Ironbox and alert tools", () => {
+  it("the data toolset leaves out the alert tools", () => {
     expect(toolsFor()).toBe(tools);
     const data = toolsFor("data").map((t) => t.name);
     expect(data).toHaveLength(42);
-    expect(data.filter((n) => n.includes("ironbox") || n.includes("box_") || n.includes("alert"))).toEqual([]);
-    expect(tools.filter((t) => !data.includes(t.name)).map((t) => t.name).sort()).toEqual([...IRONBOX_TOOLS, ...ALERT_TOOLS].sort());
+    expect(data.filter((n) => n.includes("alert"))).toEqual([]);
+    expect(tools.filter((t) => !data.includes(t.name)).map((t) => t.name).sort()).toEqual([...ALERT_TOOLS].sort());
   });
 
   it("every data tool only reads and works without a key", () => {
@@ -566,47 +566,6 @@ describe("liquidation alert tools", () => {
   });
 });
 
-describe("Ironbox tools", () => {
-  const box = { id: "ibx_01JC7W2K", name: "funding-bot", state: "creating", size: "small", mode: "paper", runtime: "python" };
-
-  it("create sends only the fields given, markets as a list", async () => {
-    const post = vi.fn().mockResolvedValue(box);
-    const out = await findTool("create_ironbox").handler(
-      { name: " funding-bot ", mode: "paper", markets: ["perps", "Outcomes"], note: "" },
-      mockApi({ post })
-    );
-    expect(post).toHaveBeenCalledWith("/v1/ironbox", { mode: "paper", name: "funding-bot", markets: ["perps", "outcomes"] });
-    expect(JSON.parse(out)).toEqual(box);
-  });
-
-  it("create works with no arguments and reads comma-separated markets", async () => {
-    const post = vi.fn().mockResolvedValue(box);
-    await findTool("create_ironbox").handler({}, mockApi({ post }));
-    expect(post).toHaveBeenLastCalledWith("/v1/ironbox", { mode: "paper" });
-    await findTool("create_ironbox").handler({ size: "large", runtime: "node", markets: "perps, spot" }, mockApi({ post }));
-    expect(post).toHaveBeenLastCalledWith("/v1/ironbox", { mode: "paper", size: "large", runtime: "node", markets: ["perps", "spot"] });
-    await expect(findTool("create_ironbox").handler({ markets: [1] }, mockApi({ post }))).rejects.toThrow("markets");
-  });
-
-  it("list, get and delete read and remove by id", async () => {
-    const get = vi.fn().mockResolvedValue({ data: [box] });
-    const del = vi.fn().mockResolvedValue({ ...box, state: "deleted" });
-    const api = mockApi({ get, del });
-    expect(JSON.parse(await findTool("list_ironboxes").handler({}, api))).toEqual({ data: [box] });
-    expect(get).toHaveBeenLastCalledWith("/v1/ironbox");
-    await findTool("get_ironbox").handler({ id: " ibx_01JC7W2K " }, api);
-    expect(get).toHaveBeenLastCalledWith("/v1/ironbox/ibx_01JC7W2K");
-    const out = await findTool("delete_ironbox").handler({ id: "ibx_01JC7W2K" }, api);
-    expect(del).toHaveBeenCalledWith("/v1/ironbox/ibx_01JC7W2K");
-    expect(JSON.parse(out).state).toBe("deleted");
-    for (const bad of ["../keys", "ibx_", "6f1c2a3b", "ibx_1/../x", "ibx_1?x=1"]) {
-      await expect(findTool("delete_ironbox").handler({ id: bad }, api), bad).rejects.toThrow("Ironbox id");
-      await expect(findTool("get_ironbox").handler({ id: bad }, api), bad).rejects.toThrow("Ironbox id");
-    }
-    expect(del).toHaveBeenCalledTimes(1);
-  });
-});
-
 // ─── get_outcome_markets ──────────────────────────────────────────────────────
 
 describe("get_outcome_markets", () => {
@@ -676,46 +635,6 @@ describe("get_outcome_markets", () => {
   });
 });
 
-describe("paper box strategy tools", () => {
-  const secret = "ibxs_" + "ab".repeat(32);
-  const box = `https://api.ironflow.sh/box/${secret}`;
-
-  it("start_box_strategy sends only strategy fields, to the box URL", async () => {
-    const post = vi.fn().mockResolvedValue({ strategy: { id: "strat_1" }, paper: true });
-    await findTool("start_box_strategy").handler(
-      { box, kind: "dca", market: "BTC", tranche_usd: 100, budget_usd: 500, max_loss_usd: 50, script: "import os" },
-      mockApi({ post })
-    );
-    expect(post).toHaveBeenCalledWith(`/box/${secret}/strategies`, {
-      kind: "dca", market: "BTC", tranche_usd: 100, budget_usd: 500, max_loss_usd: 50,
-    });
-  });
-
-  it("takes the bare secret and refuses anything else", async () => {
-    const get = vi.fn().mockResolvedValue({ strategies: [] });
-    await findTool("list_box_strategies").handler({ box: secret }, mockApi({ get }));
-    expect(get).toHaveBeenCalledWith(`/box/${secret}/strategies`);
-    await expect(findTool("list_box_strategies").handler({ box: "https://evil.example/x" }, mockApi({ get }))).rejects.toThrow("box must be");
-    await expect(findTool("list_box_strategies").handler({ box: "ibxs_../../v1/keys" }, mockApi({ get }))).rejects.toThrow("box must be");
-  });
-
-  it("stop_box_strategy can leave the position and checks the id", async () => {
-    const del = vi.fn().mockResolvedValue({ strategy: { status: "stopped" } });
-    const strategy_id = "strat_9f2c4a7e1b3d5c60";
-    await findTool("stop_box_strategy").handler({ box, strategy_id, close_position: false }, mockApi({ del }));
-    expect(del).toHaveBeenCalledWith(`/box/${secret}/strategies/${strategy_id}?close_position=false`);
-    await findTool("stop_box_strategy").handler({ box, strategy_id }, mockApi({ del }));
-    expect(del).toHaveBeenLastCalledWith(`/box/${secret}/strategies/${strategy_id}`);
-    await expect(findTool("stop_box_strategy").handler({ box, strategy_id: "../x" }, mockApi({ del }))).rejects.toThrow("strategy_id");
-  });
-
-  it("get_box_activity passes the cursor", async () => {
-    const get = vi.fn().mockResolvedValue({ events: [], next_cursor: 9 });
-    await findTool("get_box_activity").handler({ box, after: 9, limit: 50 }, mockApi({ get }));
-    expect(get).toHaveBeenCalledWith(`/box/${secret}/activity`, { after: "9", limit: "50" });
-  });
-});
-
 describe("number-like parameters", () => {
   // opencode's first get_liquidation_map call sent bucket_size 100 as a
   // number and got '"bucket_size" must be a string' (2026-11-11).
@@ -740,21 +659,10 @@ describe("number-like parameters", () => {
     expect(getLiquidationMap).not.toHaveBeenCalled();
   });
 
-  it("start_box_strategy sends grid prices as strings and numeric fields as numbers", async () => {
-    const secret = "ibxs_" + "cd".repeat(32);
-    const post = vi.fn().mockResolvedValue({ strategy: { id: "strat_1" } });
-    await findTool("start_box_strategy").handler(
-      { box: secret, kind: "grid", market: "BTC", lower_px: 95000, upper_px: "105000", grids: "10", size_usd: "500", max_loss_usd: 50 },
-      mockApi({ post })
-    );
-    expect(post).toHaveBeenCalledWith(`/box/${secret}/strategies`, {
-      kind: "grid", market: "BTC", lower_px: "95000", upper_px: "105000", grids: 10, size_usd: 500, max_loss_usd: 50,
-    });
-  });
 });
 
 describe("key-only tools", () => {
-  const keyOnly = ["create_liquidation_alert", "list_liquidation_alerts", "test_liquidation_alert", "delete_liquidation_alert", "get_ironbox", "delete_ironbox"];
+  const keyOnly = ["create_liquidation_alert", "list_liquidation_alerts", "test_liquidation_alert", "delete_liquidation_alert"];
 
   it("are marked and say so in their description", () => {
     for (const name of keyOnly) {
@@ -764,23 +672,8 @@ describe("key-only tools", () => {
     }
   });
 
-  it("create_ironbox needs no key and is paper only", async () => {
-    const tool = findTool("create_ironbox");
-    expect(tool.needsKey).toBeUndefined();
-    expect(JSON.stringify(tool.inputSchema)).not.toContain("live");
-    expect(tool.description).not.toMatch(/\blive\b|real funds/);
-    const post = vi.fn().mockResolvedValue({});
-    for (const mode of ["live", "LIVE ", "real"]) {
-      await expect(tool.handler({ mode }, mockApi({ post }))).rejects.toThrow("paper only");
-    }
-    await tool.handler({ mode: " Paper " }, mockApi({ post }));
-    await tool.handler({ mode: "" }, mockApi({ post }));
-    expect(post).toHaveBeenCalledTimes(2);
-    expect(post).toHaveBeenLastCalledWith("/v1/ironbox", { mode: "paper" });
-  });
-
   it("every other tool works without a key", () => {
-    const marked = tools.filter((t) => t.needsKey && t.name !== "create_ironbox").map((t) => t.name);
+    const marked = tools.filter((t) => t.needsKey).map((t) => t.name);
     expect(marked.sort()).toEqual([...keyOnly].sort());
   });
 });

@@ -34,7 +34,7 @@ const DATA_DESCRIPTION =
 // show the model only these lines and the tool names, so they say when to use
 // the tools, also for questions that do not name Hyperliquid ("what's BTC
 // funding right now?"), and map the common questions to a first call. The
-// data toolset (plain.ts) leaves out the alert, Ironbox, key and x402
+// data toolset (plain.ts) leaves out the alert, key and x402
 // sentences with the tools they are about. Older Claude Code builds cut
 // instructions at 2 KB.
 const SCOPE =
@@ -49,7 +49,7 @@ const CREDITS = "Each call costs credits: 1 for a read, 5 for analytics, 10 for 
 const KEYLESS = "Keyless use allows 30 requests a minute, 100 credits a day and 24 hours of history";
 const LIMITS = "Limits: https://docs.ironflow.sh/concepts/rate-limits.";
 const DATA_INSTRUCTIONS = `${SCOPE} Every tool only reads. ${WHEN} ${WHERE_TO_START} ${SQL} ${NOTICE} ${CREDITS} ${KEYLESS}. ${LIMITS}`;
-const ALL_INSTRUCTIONS = `${SCOPE} ${WHEN} ${WHERE_TO_START} ${SQL} ${NOTICE} ${CREDITS} ${KEYLESS}; a free key from https://ironflow.sh/key raises that to 60 a minute, 1,000 credits a day (3,000 a month) and 14 days. ${LIMITS} create_liquidation_alert posts liquidations to the user's Discord, Slack, Telegram or webhook as they happen (needs a key, a free key works). An agent can spin up its own Ironbox with create_ironbox to trade on paper next to Hyperliquid, with no key. Agents with USDC on Base can pay per call with x402, with no key: https://docs.ironflow.sh/guides/pay-per-call.`;
+const ALL_INSTRUCTIONS = `${SCOPE} ${WHEN} ${WHERE_TO_START} ${SQL} ${NOTICE} ${CREDITS} ${KEYLESS}; a free key from https://ironflow.sh/key raises that to 60 a minute, 1,000 credits a day (3,000 a month) and 14 days. ${LIMITS} create_liquidation_alert posts liquidations to the user's Discord, Slack, Telegram or webhook as they happen (needs a key, a free key works). Agents with USDC on Base can pay per call with x402, with no key: https://docs.ironflow.sh/guides/pay-per-call.`;
 export const instructions = (toolset: Toolset): string => (toolset === "data" ? DATA_INSTRUCTIONS : ALL_INSTRUCTIONS);
 
 // Reads the package version from package.json so MCP clients see the real
@@ -123,7 +123,7 @@ export function createServer(api: IronflowAPI, version: string, options: ServerO
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     // Most tools only read, from data outside this server: readOnlyHint
-    // and openWorldHint. The alert and Ironbox tools say what they change.
+    // and openWorldHint. The alert tools say what they change.
     // The title appears at the top level and in the annotations, which
     // older clients read.
     tools: tools.map((t) => ({
