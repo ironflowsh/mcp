@@ -5,7 +5,7 @@ MCP server for [Ironflow](https://ironflow.sh), Hyperliquid data from our own no
 46 tools:
 
 - 42 read data, including `run_query` for read-only SQL over every fill, wallet, funding and liquidation table.
-- 4 manage liquidation alerts that Ironflow posts to your Discord, Slack, Telegram or webhook.
+- 4 manage alerts that Ironflow posts to your Discord, Slack, Telegram or webhook: liquidations, warnings before watched wallets are liquidated, and edge signals.
 
 No API key needed to start: keyless calls get 30 requests a minute, 100 credits a day and 24 hours of history. A free key from [ironflow.sh/key](https://ironflow.sh/key) gives 60 requests a minute, 1,000 credits a day (up to 3,000 a month) and 14 days. A read costs 1 credit, analytics 5 and SQL 10 (see [Limits](#limits)). Agents with a USDC wallet on Base can also pay per call with x402, from $0.001, with no key and no credits ([pay per call](https://docs.ironflow.sh/guides/pay-per-call)).
 
@@ -93,7 +93,13 @@ To host the HTTP server yourself: `npx -y -p @ironflowsh/mcp ironflow-mcp-http` 
 
 **Status:** `get_status`, `get_status_metrics`, `get_status_history`
 
-**Liquidation alerts** (need an API key; a free key allows one): `create_liquidation_alert` has Ironflow post matching liquidations to a Discord channel, Slack channel, Telegram chat or HTTPS webhook within seconds, filtered by market, side, size and wallet, and keeps posting after the conversation ends; `list_liquidation_alerts`, `test_liquidation_alert` and `delete_liquidation_alert` manage them. Guide: [docs.ironflow.sh/guides/liquidation-alerts](https://docs.ironflow.sh/guides/liquidation-alerts).
+**Alerts** (need an API key): `create_liquidation_alert` has Ironflow post to a Discord channel, Slack channel, Telegram chat or HTTPS webhook and keeps posting after the conversation ends. Its `signal` picks what it posts:
+
+- left out: matching liquidations within seconds, filtered by market, side, size and wallet (`address`). Every key, a free key allows one alert.
+- `position_risk`: a warning when a position of one of `addresses` gets within `threshold_pct` (1 to 50, default 10) of its liquidation price, and a last message if that wallet is liquidated. Explorer watches 10 wallets, Builder 200, Pro 1,000.
+- `liquidation_pressure`, `opening_bell` or `flow_ahead`: Ironflow's edge signals (a market side entering high liquidation pressure, the 09:29 New York preview of the HIP-3 stock perps, a TWAP with at least $250,000 left to execute). Pro.
+
+A plan that does not include the kind asked for gets the API's refusal as it is, with the plan that does and its link. `list_liquidation_alerts`, `test_liquidation_alert` and `delete_liquidation_alert` manage every kind. Guide: [docs.ironflow.sh/guides/liquidation-alerts](https://docs.ironflow.sh/guides/liquidation-alerts).
 
 Called without a key, a tool that needs one answers with the free key link instead of calling the API. `https://mcp.ironflow.sh/data` serves only the 42 read-only data tools, without the alert tools.
 
