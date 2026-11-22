@@ -49,7 +49,7 @@ const CREDITS = "Each call costs credits: 1 for a read, 5 for analytics, 10 for 
 const KEYLESS = "Keyless use allows 30 requests a minute, 100 credits a day and 24 hours of history";
 const LIMITS = "Limits: https://docs.ironflow.sh/concepts/rate-limits.";
 const DATA_INSTRUCTIONS = `${SCOPE} Every tool only reads. ${WHEN} ${WHERE_TO_START} ${SQL} ${NOTICE} ${CREDITS} ${KEYLESS}. ${LIMITS}`;
-const ALL_INSTRUCTIONS = `${SCOPE} ${WHEN} ${WHERE_TO_START} ${SQL} ${NOTICE} ${CREDITS} ${KEYLESS}; a free key from https://ironflow.sh/key raises that to 60 a minute, 1,000 credits a day (3,000 a month) and 14 days. ${LIMITS} create_liquidation_alert posts liquidations to the user's Discord, Slack, Telegram or webhook as they happen (needs a key, a free key works). Agents with USDC on Base can pay per call with x402, with no key: https://docs.ironflow.sh/guides/pay-per-call.`;
+const ALL_INSTRUCTIONS = `${SCOPE} ${WHEN} ${WHERE_TO_START} ${SQL} ${NOTICE} ${CREDITS} ${KEYLESS}; a free key from https://ironflow.sh/key raises that to 60 a minute, 1,000 credits a day (3,000 a month) and 14 days. ${LIMITS} create_liquidation_alert posts liquidations to the user's Discord, Slack, Telegram or webhook as they happen (needs a key, a free key works); with signal position_risk it warns when watched wallets near liquidation (Explorer and up), with an edge signal it posts that signal (Pro). Agents with USDC on Base can pay per call with x402, with no key: https://docs.ironflow.sh/guides/pay-per-call.`;
 export const instructions = (toolset: Toolset): string => (toolset === "data" ? DATA_INSTRUCTIONS : ALL_INSTRUCTIONS);
 
 // Reads the package version from package.json so MCP clients see the real

@@ -57,6 +57,9 @@ const ALERT = {
   side: d("any, long (longs liquidated) or short"),
   min_usd: d("Smallest liquidation reported, USD"),
   address: d("Only this wallet, when set"),
+  signal: d("position_risk, liquidation_pressure, opening_bell or flow_ahead; absent on a liquidation alert"),
+  addresses: d("position_risk only: the watched wallets"),
+  threshold_pct: d("position_risk only: warns when mark is within this percent of the liquidation price"),
   status: d("active or disabled (after 20 failed deliveries in a row)"),
   failures: d("Failed deliveries in a row"),
   last_error: d("The destination's last error"),
@@ -279,6 +282,8 @@ const toolSchemas: Record<string, Schema> = {
   list_liquidation_alerts: obj("The account's liquidation alerts", {
     alerts: arr("Alerts", obj("One alert", ALERT)),
     limit: d("Alerts this tier allows"),
+    wallet_limit: d("Wallets this tier's position risk alerts may watch in all"),
+    wallets_watched: d("Wallets the account's position risk alerts watch now"),
   }),
   test_liquidation_alert: obj("Test delivery result", {
     delivered: d("Whether the destination accepted the test message"),

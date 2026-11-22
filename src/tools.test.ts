@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ALERT_TOOLS, tools, toolsFor } from "./tools.js";
 import { outputSchemas } from "./schemas.js";
 import { structuredFrom } from "./server.js";
-import type { IronflowAPI } from "./api.js";
+import { ApiError, type IronflowAPI } from "./api.js";
 
 // ─── Mock API ────────────────────────────────────────────────────────────────
 
@@ -541,6 +541,95 @@ describe("liquidation alert tools", () => {
     const post = vi.fn().mockResolvedValue({ type: "telegram" });
     await findTool("create_liquidation_alert").handler({ telegram_chat: "@my_alerts", min_usd: 250000 }, mockApi({ post }));
     expect(post).toHaveBeenCalledWith("/v1/alerts", { telegram_chat: "@my_alerts", min_usd: 250000 });
+  });
+
+  it("create makes a position risk alert for a list of wallets", async () => {
+    const post = vi.fn().mockResolvedValue({ id: "6f1c2a3b-0000-4000-8000-000000000002", signal: "position_risk" });
+    const a = "0x9B3CAFA1209AC61F02D7BC3B219697FB171C9C91";
+    const b = "0x0000000000000000000000000000000000000001";
+    await findTool("create_liquidation_alert").handler(
+      { url: "https://example.com/hook", signal: "position_risk", addresses: [a, b, a.toLowerCase()], threshold_pct: 7.5, name: "Users" },
+      mockApi({ post })
+    );
+    expect(post).toHaveBeenCalledWith("/v1/alerts", {
+      url: "https://example.com/hook",
+      signal: "position_risk",
+      addresses: [a.toLowerCase(), b],
+      threshold_pct: 7.5,
+      name: "Users",
+    });
+  });
+
+  it("create reads addresses as a comma-separated string and threshold_pct as text, and leaves the default threshold to the API", async () => {
+    const post = vi.fn().mockResolvedValue({});
+    const tool = findTool("create_liquidation_alert");
+    const a = "0x9b3cafa1209ac61f02d7bc3b219697fb171c9c91";
+    const b = "0x0000000000000000000000000000000000000001";
+    await tool.handler({ telegram_chat: "@risk", signal: "position_risk", addresses: `${a}, ${b}`, threshold_pct: "5%" }, mockApi({ post }));
+    expect(post).toHaveBeenLastCalledWith("/v1/alerts", { telegram_chat: "@risk", signal: "position_risk", addresses: [a, b], threshold_pct: 5 });
+    await tool.handler({ telegram_chat: "@risk", signal: "position_risk", addresses: a }, mockApi({ post }));
+    expect(post).toHaveBeenLastCalledWith("/v1/alerts", { telegram_chat: "@risk", signal: "position_risk", addresses: [a] });
+  });
+
+  it("create refuses a position risk alert it cannot make, and sends nothing", async () => {
+    const post = vi.fn();
+    const tool = findTool("create_liquidation_alert");
+    const url = "https://example.com/hook";
+    const wallet = "0x9b3cafa1209ac61f02d7bc3b219697fb171c9c91";
+    const cases: [Record<string, unknown>, string][] = [
+      [{ url, signal: "position_risk" }, "needs addresses"],
+      [{ url, signal: "position_risk", addresses: [] }, "needs addresses"],
+      [{ url, signal: "position_risk", addresses: ["0x123"] }, "not a wallet address"],
+      [{ url, signal: "position_risk", addresses: [42] }, "list of wallets"],
+      [{ url, signal: "position_risk", addresses: [wallet], threshold_pct: 0.5 }, "1 to 50"],
+      [{ url, signal: "position_risk", addresses: [wallet], threshold_pct: 51 }, "1 to 50"],
+      [{ url, signal: "position_risk", addresses: [wallet], threshold_pct: "ten" }, "1 to 50"],
+      [{ url, signal: "position_risk", address: wallet }, "not address"],
+      [{ url, addresses: [wallet] }, 'signal "position_risk"'],
+      [{ url, threshold_pct: 10 }, 'signal "position_risk"'],
+      [{ url, signal: "flow_ahead", addresses: [wallet] }, 'signal "position_risk"'],
+      [{ url, signal: "liquidation_pressure", address: wallet }, "no wallet filter"],
+      [{ url, signal: "whales" }, "signal must be one of"],
+    ];
+    for (const [args, error] of cases) {
+      await expect(tool.handler(args, mockApi({ post })), JSON.stringify(args)).rejects.toThrow(error);
+    }
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("create makes an edge signal alert with its market, side and size filters", async () => {
+    const post = vi.fn().mockResolvedValue({ signal: "flow_ahead" });
+    await findTool("create_liquidation_alert").handler(
+      { url: "https://discord.com/api/webhooks/1/x", signal: "flow_ahead", markets: "BTC,ETH", side: "long", min_usd: 500000 },
+      mockApi({ post })
+    );
+    expect(post).toHaveBeenCalledWith("/v1/alerts", {
+      url: "https://discord.com/api/webhooks/1/x",
+      signal: "flow_ahead",
+      markets: "BTC,ETH",
+      side: "long",
+      min_usd: 500000,
+    });
+  });
+
+  it("create passes a plan refusal on as the API words it, with its upgrade link", async () => {
+    const message = "Ironflow API error 403 PLAN_REQUIRED: signal alerts (Liquidation Pressure, Opening Bell and Flow Ahead to Telegram, Discord, Slack or a webhook) are on Pro, 499 USDC per 30 days or 4,788 a year. Liquidation alerts work on every key";
+    const post = vi.fn().mockRejectedValue(new ApiError(message, 403, "PLAN_REQUIRED", undefined, "https://ironflow.sh/upgrade?plan=pro"));
+    await expect(
+      findTool("create_liquidation_alert").handler({ url: "https://example.com/hook", signal: "opening_bell" }, mockApi({ post }))
+    ).rejects.toThrow(`${message}. Upgrade: https://ironflow.sh/upgrade?plan=pro`);
+    // A message that already links the plan is passed on unchanged.
+    const linked = "Ironflow API error 403 ALERT_LIMIT: upgrade for more: https://ironflow.sh/upgrade?utm_source=api";
+    const again = vi.fn().mockRejectedValue(new ApiError(linked, 403, "ALERT_LIMIT", undefined, "https://ironflow.sh/upgrade?utm_source=api"));
+    const err = await findTool("create_liquidation_alert").handler({ url: "https://example.com/hook" }, mockApi({ post: again })).catch((e: Error) => e);
+    expect((err as Error).message).toBe(linked);
+  });
+
+  it("create lists every signal the API takes", () => {
+    const props = findTool("create_liquidation_alert").inputSchema.properties;
+    expect(props.signal.enum).toEqual(["position_risk", "liquidation_pressure", "opening_bell", "flow_ahead"]);
+    expect(props.addresses).toMatchObject({ type: "array", items: { type: "string" } });
+    expect(props.threshold_pct.type).toBe("number");
   });
 
   it("test and delete take only an alert id", async () => {

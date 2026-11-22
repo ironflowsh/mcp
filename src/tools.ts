@@ -1,6 +1,6 @@
 // MCP tool definitions for Ironflow market data.
 
-import { IronflowAPI } from "./api.js";
+import { ApiError, IronflowAPI } from "./api.js";
 import { keyHelp, type Transport } from "./limits.js";
 import { SUMMARY_WINDOWS, WINDOW_MINUTES, summaryOutput, type LiquidationSummaryResponse } from "./liquidations.js";
 import { plainSchema, plainText } from "./plain.js";
@@ -119,6 +119,92 @@ function alertId(args: Record<string, unknown>): string {
     throw new Error("id must be an alert id such as 6f1c2a3b-... (list_liquidation_alerts lists them)");
   }
   return id;
+}
+
+// ─── Alerts ──────────────────────────────────────────────────────────────────
+
+// The signals an alert can follow instead of liquidations (the API's
+// POST /v1/alerts signal). position_risk watches wallets; the others are
+// the edge signals.
+export const ALERT_SIGNALS = ["position_risk", "liquidation_pressure", "opening_bell", "flow_ahead"];
+const POSITION_RISK = "position_risk";
+const MIN_THRESHOLD_PCT = 1;
+const MAX_THRESHOLD_PCT = 50;
+
+const WALLET = /^0x[0-9a-f]{40}$/;
+
+// ended closes a message as a sentence before more text follows it.
+const ended = (text: string): string => (/[.!?]$/.test(text) ? text : `${text}.`);
+
+// walletList reads addresses as a list or a comma- or space-separated
+// string: lowercase, without repeats, each a 0x wallet.
+function walletList(value: unknown): string[] {
+  const usage = 'addresses must be a list of wallets such as ["0xabc...", "0xdef..."]';
+  const missing = 'a position_risk alert needs addresses, the wallets to watch, such as ["0xabc...", "0xdef..."]';
+  if (value === undefined || value === null) throw new Error(missing);
+  const raw = Array.isArray(value) ? value : typeof value === "string" ? value.split(/[\s,]+/) : undefined;
+  if (!raw) throw new Error(usage);
+  const out: string[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== "string") throw new Error(usage);
+    const a = entry.trim().toLowerCase();
+    if (!a || out.includes(a)) continue;
+    if (!WALLET.test(a)) throw new Error(`"${entry.trim().slice(0, 50)}" is not a wallet address: each one is 0x and 40 hex characters`);
+    out.push(a);
+  }
+  if (out.length === 0) throw new Error(missing);
+  return out;
+}
+
+// thresholdPct reads threshold_pct: a percent from 1 to 50.
+function thresholdPct(value: unknown): number {
+  const n = typeof value === "string" && value.trim() !== "" ? Number(value.trim().replace(/%$/, "")) : value;
+  if (typeof n !== "number" || !Number.isFinite(n) || n < MIN_THRESHOLD_PCT || n > MAX_THRESHOLD_PCT) {
+    throw new Error(`threshold_pct is the warning distance from the liquidation price in percent, ${MIN_THRESHOLD_PCT} to ${MAX_THRESHOLD_PCT} (10: warn when a position is within 10%)`);
+  }
+  return n;
+}
+
+// alertBody checks create_liquidation_alert's arguments and returns the
+// POST /v1/alerts body. The API checks them again; checking here first
+// means a mixed-up call (addresses on a liquidation alert) creates nothing
+// and says what to change.
+function alertBody(args: Record<string, unknown>): Record<string, unknown> {
+  const url = optionalString(args, "url", "");
+  const telegram = optionalString(args, "telegram_chat", "");
+  if (!url && !telegram) {
+    throw new Error("give url (Discord, Slack or https webhook) or telegram_chat");
+  }
+  const body: Record<string, unknown> = url ? { url } : { telegram_chat: telegram };
+  const signal = optionalString(args, "signal", "").trim().toLowerCase();
+  const address = optionalString(args, "address", "");
+  const hasAddresses = args.addresses !== undefined && args.addresses !== null && args.addresses !== "";
+  const hasThreshold = args.threshold_pct !== undefined && args.threshold_pct !== null && args.threshold_pct !== "";
+  if (signal) {
+    if (!ALERT_SIGNALS.includes(signal)) throw new Error(`signal must be one of ${ALERT_SIGNALS.join(", ")}, or left out for liquidations`);
+    body.signal = signal;
+  }
+  if (signal === POSITION_RISK) {
+    if (address) throw new Error("a position_risk alert takes addresses, a list of wallets, not address");
+    body.addresses = walletList(args.addresses);
+    if (hasThreshold) body.threshold_pct = thresholdPct(args.threshold_pct);
+  } else {
+    if (hasAddresses || hasThreshold) {
+      throw new Error('addresses and threshold_pct belong to a position risk alert: send signal "position_risk" with them');
+    }
+    if (signal && address) {
+      throw new Error(`a ${signal} alert has no wallet filter (address): it follows markets, side and min_usd`);
+    }
+  }
+  const markets = optionalString(args, "markets", "");
+  if (markets) body.markets = markets;
+  const side = optionalString(args, "side", "");
+  if (side) body.side = side;
+  if (args.min_usd !== undefined) body.min_usd = optionalNumber(args, "min_usd", 0);
+  if (address) body.address = address;
+  const name = optionalString(args, "name", "");
+  if (name) body.name = name;
+  return body;
 }
 
 const MARKET ="Market: BTC-PERP, xyz:NVDA-PERP, HYPE/USDC, or a Hyperliquid name (BTC, @107, xyz:NVDA)";
@@ -378,16 +464,38 @@ const definitions: ToolDef[] = [
     name: "create_liquidation_alert",
     title: "Create liquidation alert",
     description:
-      "Have Ironflow post Hyperliquid liquidations to the user's Discord, Slack, Telegram or HTTPS webhook within seconds, filtered by market, side, size and wallet. It keeps running after the conversation: use it when the user wants to be told about liquidations, not just to see them now. Needs an API key (a free key works). Give url (a Discord channel webhook, a Slack incoming webhook or any public https URL) or telegram_chat (then tell the user to add the bot named in the result's setup). A plain webhook gets signed JSON; its signing_secret appears only in this result, so pass it on. Then call test_liquidation_alert.",
+      "Have Ironflow post to the user's Discord, Slack, Telegram or HTTPS webhook as things happen on Hyperliquid. It keeps running after the conversation: use it when the user wants to be told, not just to see something now. signal picks what it posts: leave it out for liquidations within seconds (filtered by markets, side, min_usd and address; any key, a free key works); position_risk to warn before wallets are liquidated (\"warn me when any of these wallets gets within 5% of liquidation\": addresses and threshold_pct; Explorer plan and up); liquidation_pressure, opening_bell or flow_ahead for Ironflow's edge signals (Pro plan). Needs an API key. A plan refusal says which plan the user needs and links it: pass it on as it is. Give url (a Discord channel webhook, a Slack incoming webhook or any public https URL) or telegram_chat (then tell the user to add the bot named in the result's setup). A plain webhook gets signed JSON; its signing_secret appears only in this result, so pass it on. Then call test_liquidation_alert.",
     inputSchema: {
       type: "object",
       properties: {
+        signal: {
+          type: "string",
+          enum: ALERT_SIGNALS,
+          description:
+            "What to post; omit for liquidations. position_risk: a warning when a position of one of addresses gets within threshold_pct of its liquidation price, and a last message if that wallet is liquidated (Explorer and up). liquidation_pressure: a market side entering high liquidation pressure. opening_bell: the 09:29 New York pre-open preview of the HIP-3 stock perps in markets. flow_ahead: a new TWAP order with at least $250,000 left to execute. The last three are on Pro.",
+        },
         url: { type: "string", description: "Where to post: https://discord.com/api/webhooks/..., https://hooks.slack.com/services/... or a public https URL (or use telegram_chat)" },
         telegram_chat: { type: "string", description: "A Telegram chat instead of url: @channel or group name, or a numeric chat id (-100...)" },
+        addresses: {
+          type: "array",
+          items: { type: "string" },
+          description: "position_risk only, and required there: the wallets to watch (0x...), e.g. a user's or a fund's accounts. A comma-separated string works too. The plan limits how many wallets all of an account's position risk alerts watch (Explorer 10, Builder 200, Pro 1,000).",
+        },
+        threshold_pct: {
+          type: "number",
+          description: "position_risk only: warn when a position's mark price is within this percent of its liquidation price, 1 to 50 (default 10)",
+        },
         markets: { type: "string", description: "Comma-separated markets, e.g. BTC,ETH-PERP,xyz:NVDA (Hyperliquid names work); omit for every market" },
-        side: { type: "string", enum: ["any", "long", "short"], description: "Which positions: long = longs liquidated (default any)" },
-        min_usd: { type: "number", description: "Smallest liquidation to report, in USD (default 0; 100000 keeps a channel readable)" },
-        address: { type: "string", description: "Only this wallet's liquidations (0x...)" },
+        side: {
+          type: "string",
+          enum: ["any", "long", "short"],
+          description: "Default any. Liquidations: long = longs liquidated. position_risk: long = long positions only. liquidation_pressure: long = longs at risk. flow_ahead: long = buy TWAPs, short = sell TWAPs",
+        },
+        min_usd: {
+          type: "number",
+          description: "Smallest amount in USD (default 0): the liquidation (100000 keeps a channel readable), the position's value (position_risk), the notional at risk (liquidation_pressure) or the USD left to execute (flow_ahead)",
+        },
+        address: { type: "string", description: "Liquidations only: only this wallet's liquidations (0x...). For position_risk use addresses" },
         name: { type: "string", description: "Label shown in each message, e.g. BTC whales" },
       },
       required: [],
@@ -395,22 +503,17 @@ const definitions: ToolDef[] = [
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
     needsKey: always,
     handler: async (args, api) => {
-      const url = optionalString(args, "url", "");
-      const telegram = optionalString(args, "telegram_chat", "");
-      if (!url && !telegram) {
-        throw new Error("give url (Discord, Slack or https webhook) or telegram_chat");
+      const body = alertBody(args);
+      try {
+        return JSON.stringify(await api.post("/v1/alerts", body), null, 2);
+      } catch (error) {
+        // A plan refusal names the plan in its message; the upgrade link
+        // rides in the error's upgrade block, so it is added here.
+        if (error instanceof ApiError && error.upgradeUrl && !error.message.includes(error.upgradeUrl)) {
+          throw new ApiError(`${ended(error.message)} Upgrade: ${error.upgradeUrl}`, error.status, error.code, error.retryAfterS, error.upgradeUrl);
+        }
+        throw error;
       }
-      const body: Record<string, unknown> = url ? { url } : { telegram_chat: telegram };
-      const markets = optionalString(args, "markets", "");
-      if (markets) body.markets = markets;
-      const side = optionalString(args, "side", "");
-      if (side) body.side = side;
-      if (args.min_usd !== undefined) body.min_usd = optionalNumber(args, "min_usd", 0);
-      const address = optionalString(args, "address", "");
-      if (address) body.address = address;
-      const name = optionalString(args, "name", "");
-      if (name) body.name = name;
-      return JSON.stringify(await api.post("/v1/alerts", body), null, 2);
     },
   },
   {

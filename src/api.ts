@@ -50,7 +50,10 @@ export class ApiError extends Error {
     message: string,
     readonly status: number,
     readonly code?: string,
-    readonly retryAfterS?: number
+    readonly retryAfterS?: number,
+    // upgradeUrl is the page of the plan that lifts this refusal, from the
+    // error's upgrade block (the message itself does not always link it).
+    readonly upgradeUrl?: string
   ) {
     super(message);
   }
@@ -195,14 +198,15 @@ export class IronflowAPI {
     const retryNote = retryAfterS ? ` Retry after ${retryAfterS} s.` : "";
     try {
       const parsed = JSON.parse(text) as {
-        error?: { code?: string; message?: string; detail?: string; did_you_mean?: unknown };
+        error?: { code?: string; message?: string; detail?: string; did_you_mean?: unknown; upgrade?: { url?: unknown } };
       };
+      const upgradeUrl = typeof parsed.error?.upgrade?.url === "string" ? parsed.error.upgrade.url : undefined;
       const code = parsed.error?.code;
       const message = withSuggestions(parsed.error?.message ?? text, parsed.error?.did_you_mean);
       const detail = parsed.error?.detail ? ` (${parsed.error.detail})` : "";
       this.record(res.status, code);
       if (code) {
-        return new ApiError(`Ironflow API error ${res.status} ${code}: ${message}${detail}${retryNote}`, res.status, code, retryAfterS);
+        return new ApiError(`Ironflow API error ${res.status} ${code}: ${message}${detail}${retryNote}`, res.status, code, retryAfterS, upgradeUrl);
       }
     } catch {
       // Non-JSON response — fall through to raw text.

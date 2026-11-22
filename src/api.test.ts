@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { IronflowAPI } from "./api.js";
+import { ApiError, IronflowAPI } from "./api.js";
 
 // sentHeaders captures the headers of the one fetch a call makes.
 function stubFetch(): () => Record<string, string> {
@@ -138,6 +138,24 @@ describe("IronflowAPI notices", () => {
     const api = new IronflowAPI("http://api").withContext({});
     await expect(api.get("/v1/liquidations/map", { market: "PEPE-PERP" })).rejects.toThrow(`Ironflow API error 404 NOT_FOUND: ${message}`);
     await expect(api.get("/v1/liquidations/map", { market: "PEPE-PERP" })).rejects.not.toThrow("Did you mean kPEPE-PERP? Did you mean");
+  });
+});
+
+describe("IronflowAPI error upgrade link", () => {
+  const json = (body: unknown, init: ResponseInit = {}) =>
+    new Response(JSON.stringify(body), { ...init, headers: { "content-type": "application/json" } });
+  it("keeps the upgrade block's url on the error, the message as the API wrote it", async () => {
+    const message = "position risk alerts (a warning before a watched wallet is liquidated) are on paid plans";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        json({ error: { code: "TIER_LIMIT", message, upgrade: { plan: "explorer", url: "https://ironflow.sh/upgrade?plan=explorer" } } }, { status: 403 })
+      )
+    );
+    const err = await new IronflowAPI("http://api", "if_test").post("/v1/alerts", {}).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect((err as ApiError).message).toBe(`Ironflow API error 403 TIER_LIMIT: ${message}`);
+    expect((err as ApiError).upgradeUrl).toBe("https://ironflow.sh/upgrade?plan=explorer");
   });
 });
 
