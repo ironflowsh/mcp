@@ -38,7 +38,7 @@ describe("limitText", () => {
   });
 
   it("says not to retry when the API gives no Retry-After", () => {
-    expect(limitText(daily, { keyed: false, transport: "http" })).toContain("(100 credits in a rolling 24 hours). Every Ironflow tool fails for now, so make no more Ironflow calls. Tell the user:");
+    expect(limitText(daily, { keyed: false, transport: "http" })).toContain("(100 credits in a rolling 24 hours). Every Ironflow tool fails for now, so make no more Ironflow calls. Tell the user, in two steps: 1. Get a free key: https://ironflow.sh/key");
   });
 
   it("names the claude.ai conversation or the claude.ai total when one ran out", () => {
@@ -56,7 +56,7 @@ describe("limitText", () => {
       7200
     );
     expect(limitText(own, ctx)).toBe(
-      "Ironflow API error 429 KEYLESS_DAILY_LIMIT: the keyless allowance for this conversation is used up (30 credits in a rolling 24 hours). Every Ironflow tool fails for about 24 hours, so make no more Ironflow calls until then. Tell the user: get a free key at https://ironflow.sh/key?utm_source=mcp (it takes a minute and gives 1,000 credits a day, up to 3,000 a month, and 14 days of history), then in Customize > Connectors remove Ironflow and add it again with the URL https://mcp.ironflow.sh/mcp?key=if_...."
+      "Ironflow API error 429 KEYLESS_DAILY_LIMIT: the keyless allowance for this conversation is used up (30 credits in a rolling 24 hours). Every Ironflow tool fails for about 24 hours, so make no more Ironflow calls until then. Tell the user, in two steps: 1. Get a free key: https://ironflow.sh/key?utm_source=mcp (one minute, no card; 1,000 credits a day, up to 3,000 a month, and 14 days of history). 2. Then in Customize > Connectors remove Ironflow and add it again with the URL https://mcp.ironflow.sh/mcp?key=if_...."
     );
     expect(limitText(total, ctx)).toContain(
       "the keyless allowance that all claude.ai conversations share is used up (3,000 credits in a rolling 24 hours). Every Ironflow tool fails for about 2 hours"
