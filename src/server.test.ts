@@ -363,7 +363,7 @@ describe("API notices in tool results", () => {
     };
     expect(res.isError).toBe(true);
     expect(res.content[0].text).toBe(
-      "Error: Ironflow API error 402 KEYLESS_DAILY_LIMIT: the keyless allowance for this IP address is used up (100 credits in a rolling 24 hours). Every Ironflow tool fails for about 6 hours, so make no more Ironflow calls until then. Tell the user: get a free key at https://ironflow.sh/key?utm_source=mcp (it takes a minute and gives 1,000 credits a day, up to 3,000 a month, and 14 days of history), then set IRONFLOW_API_KEY=if_... in the Ironflow server's env and restart the app."
+      "Error: Ironflow API error 402 KEYLESS_DAILY_LIMIT: the keyless allowance for this IP address is used up (100 credits in a rolling 24 hours). Every Ironflow tool fails for about 6 hours, so make no more Ironflow calls until then. Tell the user, in two steps: 1. Get a free key: https://ironflow.sh/key?utm_source=mcp (one minute, no card; 1,000 credits a day, up to 3,000 a month, and 14 days of history). 2. Then set IRONFLOW_API_KEY=if_... in the Ironflow server's env and restart the app."
     );
     // The email route asks the agent for the user's email; the key page does not.
     expect(res.content[0].text).not.toContain("/v1/keys");
@@ -387,8 +387,8 @@ describe("API notices in tool results", () => {
       content: { text: string }[];
     };
     expect(res.isError).toBe(true);
-    expect(res.content[0].text).toContain(`Tell the user: get a free key at https://ironflow.sh/key?utm_source=mcp`);
-    expect(res.content[0].text.endsWith(`, then ${step}.`), res.content[0].text).toBe(true);
+    expect(res.content[0].text).toContain(`Tell the user, in two steps: 1. Get a free key: https://ironflow.sh/key?utm_source=mcp`);
+    expect(res.content[0].text.endsWith(` 2. Then ${step}.`), res.content[0].text).toBe(true);
     // claude.ai calls from shared IP addresses, so its users share the allowance.
     expect(res.content[0].text.includes("claude.ai connects from shared IP addresses")).toBe(app === "claude-ai");
   });

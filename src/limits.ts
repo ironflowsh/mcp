@@ -40,6 +40,13 @@ export function keyHelp(client: string | undefined, transport: Transport): strin
   return `get a free key at ${KEY_PAGE} (it takes a minute and gives 1,000 credits a day, up to 3,000 a month, and 14 days of history), then ${connectStep(client, transport)}`;
 }
 
+// keySteps is the same as two numbered steps, for the daily limit, where
+// the key is the only way on (0.21.2, 2026-11-22: hosted MCP callers hit the
+// keyless daily limit 174 times in a week, and one account behind it has a key).
+export function keySteps(client: string | undefined, transport: Transport): string {
+  return `1. Get a free key: ${KEY_PAGE} (one minute, no card; 1,000 credits a day, up to 3,000 a month, and 14 days of history). 2. Then ${connectStep(client, transport)}`;
+}
+
 // The codes a free key lifts for a keyless caller (the API's tierLimitCodes
 // and the 401 a keyless write gets).
 const KEY_LIFTS = new Set([
@@ -100,7 +107,7 @@ export function limitText(error: unknown, ctx: LimitContext): string | undefined
     const back = error.retryAfterS
       ? `Every Ironflow tool fails for ${waitFor(error.retryAfterS)}, so make no more Ironflow calls until then.`
       : "Every Ironflow tool fails for now, so make no more Ironflow calls.";
-    return `Ironflow API error ${error.status} KEYLESS_DAILY_LIMIT: ${usedUp(error.message, credits, ctx)} ${back} Tell the user: ${help}.`;
+    return `Ironflow API error ${error.status} KEYLESS_DAILY_LIMIT: ${usedUp(error.message, credits, ctx)} ${back} Tell the user, in two steps: ${keySteps(ctx.client, ctx.transport)}.`;
   }
   // A per-minute limit passes by itself: the agent waits, and the key is
   // only an option.
