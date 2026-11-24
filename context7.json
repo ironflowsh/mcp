@@ -1,8 +1,13 @@
 {
   "$schema": "https://context7.com/schema/context7.json",
+  "url": "https://context7.com/ironflowsh/mcp",
+  "public_key": "pk_raUNH7n6TR03ofGIraqjL",
   "projectTitle": "Ironflow MCP",
   "description": "Hyperliquid historical liquidations, trades, candles, wallet analytics",
-  "excludeFolders": [".github", "scripts"],
+  "excludeFolders": [
+    ".github",
+    "scripts"
+  ],
   "rules": [
     "Connect to https://mcp.ironflow.sh/mcp (46 tools) or https://mcp.ironflow.sh/data (42 read-only data tools) over Streamable HTTP, or run it locally with npx -y @ironflowsh/mcp.",
     "Every call costs credits: a read 1, analytics 5, SQL (run_query) 10; status and describe_data cost nothing.",
