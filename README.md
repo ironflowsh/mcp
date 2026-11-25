@@ -2,14 +2,14 @@
 
 [![ironflowsh/mcp MCP server](https://glama.ai/mcp/servers/ironflowsh/mcp/badges/score.svg)](https://glama.ai/mcp/servers/ironflowsh/mcp)
 
-MCP server for [Ironflow](https://ironflow.sh), Hyperliquid data from our own nodes. It gives Claude, Cursor and any MCP client Hyperliquid market data, wallet analytics and liquidation alerts. It covers native perps, HIP-3 builder markets, HIP-4 outcome markets and spot, with every fill since 25 May 2025.
+MCP server for [Ironflow](https://ironflow.sh), the Hyperliquid data layer: Hyperliquid data from our own nodes. It gives Claude, Cursor and any MCP client Hyperliquid market data, wallet analytics and liquidation alerts. It covers native perps, HIP-3 builder markets, HIP-4 outcome markets and spot, with every fill since 25 May 2025.
 
 46 tools:
 
 - 42 read data, including `run_query` for read-only SQL over every fill, wallet, funding and liquidation table.
-- 4 manage alerts that Ironflow posts to your Discord, Slack, Telegram or webhook: liquidations, warnings before watched wallets are liquidated, and edge signals.
+- 4 manage alerts that Ironflow posts to your Discord, Slack, Telegram or webhook: liquidations, warnings before watched wallets are liquidated, and Ironflow Edge signals.
 
-No API key needed to start: keyless calls get 30 requests a minute, 100 credits a day and 24 hours of history. A free key from [ironflow.sh/key](https://ironflow.sh/key) gives 60 requests a minute, 1,000 credits a day (up to 3,000 a month) and 14 days. A read costs 1 credit, analytics 5 and SQL 10 (see [Limits](#limits)). Agents with a USDC wallet on Base can also pay per call with x402, from $0.001, with no key and no credits ([pay per call](https://docs.ironflow.sh/guides/pay-per-call)).
+No API key needed to start: keyless calls get 30 requests a minute, 100 credits a day and 24 hours of history. A free key from [ironflow.sh/key](https://ironflow.sh/key) gives 60 requests a minute, 1,000 credits a day (up to 3,000 a month) and 14 days of history. A read costs 1 credit, analytics 5 and SQL 10 (see [Limits](#limits)). Agents with a USDC wallet on Base can also pay per call with x402, from $0.001, with no key and no credits ([pay per call](https://docs.ironflow.sh/guides/pay-per-call)).
 
 ## Install
 
@@ -99,7 +99,7 @@ To host the HTTP server yourself: `npx -y -p @ironflowsh/mcp ironflow-mcp-http` 
 
 - left out: matching liquidations within seconds, filtered by market, side, size and wallet (`address`). Every key, a free key allows one alert.
 - `position_risk`: a warning when a position of one of `addresses` gets within `threshold_pct` (1 to 50, default 10) of its liquidation price, and a last message if that wallet is liquidated. Explorer watches 10 wallets, Builder 200, Pro 1,000.
-- `liquidation_pressure`, `opening_bell` or `flow_ahead`: Ironflow's edge signals (a market side entering high liquidation pressure, the 09:29 New York preview of the HIP-3 stock perps, a TWAP with at least $250,000 left to execute). Pro.
+- `liquidation_pressure`, `opening_bell` or `flow_ahead`: Ironflow Edge signals (a market side entering high liquidation pressure, the 09:29 New York preview of the HIP-3 stock perps, a TWAP with at least $250,000 left to execute). Pro.
 
 A plan that does not include the kind asked for gets the API's refusal as it is, with the plan that does and its link. `list_liquidation_alerts`, `test_liquidation_alert` and `delete_liquidation_alert` manage every kind. Guide: [docs.ironflow.sh/guides/liquidation-alerts](https://docs.ironflow.sh/guides/liquidation-alerts).
 
@@ -120,6 +120,8 @@ Every call costs credits: a read 1, analytics 5 (such as the liquidation map and
 | Explorer, 49 USDC a month (39 a month paid yearly) | 100 | 25,000 a day | 90 days |
 | Builder, 149 USDC a month (119 a month paid yearly) | 1,000 | 250,000 a day | 1 year |
 | Pro, 499 USDC a month (399 a month paid yearly) | 3,000 | 1,000,000 a day | Every fill since 25 May 2025 |
+
+Explorer and every plan above it read the full history of liquidations (since 25 May 2025), funding rates (since 12 May 2023), open interest and mark and oracle prices (since 20 May 2023); the History column is every other endpoint.
 
 Builder and Pro include commercial use. Enterprise has no credit cap. Teams that want their own Hyperliquid node in Tokyo: [ironflow.sh/nodes](https://ironflow.sh/nodes). A keyless app that names itself in its `User-Agent` gets 300 credits a day across all its IPs. On the hosted server each claude.ai conversation gets 30 keyless credits a day of its own, up to 3,000 a day for all claude.ai conversations together. Key credits count per account, all its keys together, over the UTC day and, on a free key, the UTC month. Past them a tool returns an error: `KEYLESS_DAILY_LIMIT` without a key, `DAILY_QUOTA_EXCEEDED` (back at 00:00 UTC) or `MONTHLY_QUOTA_EXCEEDED` (free keys, back on the 1st at 00:00 UTC) with one. Without a key, a limit a free key lifts says when calls work again and how to add the key in the app in use (Claude Code, claude.ai, Cursor, VS Code or the local server). Plans: [ironflow.sh/upgrade](https://ironflow.sh/upgrade). Calls paid one by one with [x402](https://docs.ironflow.sh/guides/pay-per-call) (USDC on Base, from $0.001 a call, no key) cost no credits, have free key limits and are for personal use. Every limit: [docs.ironflow.sh/concepts/rate-limits](https://docs.ironflow.sh/concepts/rate-limits).
 
