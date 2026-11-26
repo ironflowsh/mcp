@@ -15,7 +15,7 @@ import {
 import type { IronflowAPI } from "./api.js";
 import { fitToBudget } from "./budget.js";
 import { fitEnums } from "./enums.js";
-import { limitText, type Transport } from "./limits.js";
+import { dataKeyStep, limitText, type Transport } from "./limits.js";
 import { attachNotice, enumNotice } from "./notice.js";
 import { DATA_NOTICE, plainError, plainResult, plainSchema, plainText } from "./plain.js";
 import { getPrompt, listPrompts } from "./prompts.js";
@@ -32,15 +32,16 @@ const DATA_DESCRIPTION =
 // Server-level guidance the client shows the model alongside the tool list.
 // Clients that defer tool schemas (Claude Code's and claude.ai's tool search)
 // show the model only these lines and the tool names, so they say when to use
-// the tools, also for questions that do not name Hyperliquid ("what's BTC
-// funding right now?"), and map the common questions to a first call. The
+// the tools and map the common questions to a first call. They steer crypto
+// market questions only, and do not ask the model to pick these tools over
+// others when the user names no venue (a directory rule, aeon PR #1382). The
 // data toolset (plain.ts) leaves out the alert, key and x402
 // sentences with the tools they are about. Older Claude Code builds cut
 // instructions at 2 KB.
 const SCOPE =
   "Ironflow serves live Hyperliquid data from its own nodes: perps, HIP-3 markets such as xyz:NVDA, HIP-4 outcomes and spot.";
 const WHEN =
-  "Use these tools for crypto market questions about prices, funding, liquidations, open interest, top traders or a 0x wallet, also when the user does not name Hyperliquid, and say the numbers are Hyperliquid's.";
+  "Use these tools for crypto market questions about prices, funding, liquidations, open interest, top traders or a 0x wallet, and say the numbers are Hyperliquid's.";
 const WHERE_TO_START =
   "First call by question: biggest liquidations, get_liquidation_summary (rows: get_liquidations); liquidation levels, get_liquidation_map; funding now, get_mark_prices (history: get_funding_rates); a price, get_price (history: get_candles); what is moving, get_markets_snapshot or get_open_interest_changes; top traders, get_top_traders; a wallet, get_user_state, then get_user_pnl_series. list_markets with q finds a market name.";
 const SQL = "For anything else call describe_data, then run_query with ClickHouse SQL over the hl.* tables.";
@@ -187,13 +188,18 @@ export function createServer(api: IronflowAPI, version: string, options: ServerO
       };
     } catch (error) {
       // A keyless limit a free key lifts says what to tell the user and how
-      // to add the key in this client; the data toolset keeps the API's
-      // refusal without key lines (plain.ts).
-      const limit = data ? undefined : limitText(error, { keyed: scoped.hasKey(), client, transport });
+      // to add the key in this client. The data toolset keeps the API's
+      // refusal as plain data caveats (plain.ts) and adds one plain step of
+      // its own (dataKeyStep).
+      const ctx = { keyed: scoped.hasKey(), client, transport };
+      const limit = data ? undefined : limitText(error, ctx);
       const message = limit ?? (error instanceof Error ? error.message : String(error));
       const notice = scoped.notice();
       const text = notice && !message.includes(notice) ? `Error: ${message} ${notice}` : `Error: ${message}`;
-      return { content: [{ type: "text", text: data ? plainError(text) : text }], isError: true };
+      if (!data) return { content: [{ type: "text", text }], isError: true };
+      const step = dataKeyStep(error, ctx);
+      const plain = plainError(text);
+      return { content: [{ type: "text", text: step ? `${endSentence(plain)} ${step}` : plain }], isError: true };
     }
   }
 
@@ -224,6 +230,10 @@ export function structuredFrom(text: string): Record<string, unknown> {
     return { result: text };
   }
 }
+
+// endSentence closes text with a full stop unless it already ends a sentence
+// or with a link.
+const endSentence = (text: string): string => (/[.!?]$/.test(text) || /https?:\/\/\S+$/.test(text) ? text : `${text}.`);
 
 // qaClient is the client name a QA check's API calls carry: it starts with
 // qa_check, the prefix the API's usage numbers leave out.

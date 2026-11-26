@@ -21,18 +21,19 @@ export type Transport = "http" | "stdio";
 // connectStep says how to connect Ironflow with a key in the app that sent
 // initialize (a name such as claude-code/2.1.0, cursor-vscode/1.0.0 or
 // Anthropic/ClaudeAI/1.0.0), with a step any app can follow otherwise.
-export function connectStep(client: string | undefined, transport: Transport): string {
+// url is the hosted address the app is connected to (/mcp or /data).
+export function connectStep(client: string | undefined, transport: Transport, url: string = HOSTED_URL): string {
   if (transport === "stdio") return "set IRONFLOW_API_KEY=if_... in the Ironflow server's env and restart the app";
   const app = (client ?? "").toLowerCase();
   if (app.includes("claude-code")) {
-    return `run claude mcp remove ironflow, then claude mcp add --transport http ironflow ${HOSTED_URL} --header "Authorization: Bearer if_..."`;
+    return `run claude mcp remove ironflow, then claude mcp add --transport http ironflow ${url} --header "Authorization: Bearer if_..."`;
   }
-  if (isClaudeAI(app)) return `in Customize > Connectors remove Ironflow and add it again with the URL ${HOSTED_URL}?key=if_...`;
+  if (isClaudeAI(app)) return `in Customize > Connectors remove Ironflow and add it again with the URL ${url}?key=if_...`;
   if (app.includes("cursor")) return `add "headers": {"Authorization": "Bearer if_..."} next to the Ironflow url in .cursor/mcp.json`;
   if (app.includes("visual studio code") || app.includes("vscode")) {
     return `add "headers": {"Authorization": "Bearer if_..."} to the Ironflow server in mcp.json`;
   }
-  return `send the header Authorization: Bearer if_... with the Ironflow connection, or use ${HOSTED_URL}?key=if_... as its URL`;
+  return `send the header Authorization: Bearer if_... with the Ironflow connection, or use ${url}?key=if_... as its URL`;
 }
 
 // keyHelp is the free key and how to use it, as one clause for the user.
@@ -115,4 +116,27 @@ export function limitText(error: unknown, ctx: LimitContext): string | undefined
   if (error.code === "RATE_LIMIT_EXCEEDED") return `${said} Wait a minute, then call again. For 60 requests a minute, ${help}.`;
   if (KEY_LIFTS.has(error.code)) return `${said} A free key lifts this. Tell the user: ${help}.`;
   return undefined;
+}
+
+// The data toolset's key page and address: no tracking tags, no plan lines.
+export const DATA_KEY_PAGE = "https://ironflow.sh/key";
+const DATA_URL = "https://mcp.ironflow.sh/data";
+
+// dataKeyStep is what the data toolset adds to a keyless refusal, after the
+// API's text is made plain (plain.ts): for the daily limit, that every tool
+// fails until it frees up; for a limit a free key lifts, that it does, the
+// page to get one and how to add it in this app. Only facts the user needs
+// to act on: no prices, plans or pitches. A per-minute limit only says to
+// wait. undefined for key holders and other errors.
+export function dataKeyStep(error: unknown, ctx: LimitContext): string | undefined {
+  if (ctx.keyed || !(error instanceof ApiError) || !error.code) return undefined;
+  if (error.code === "RATE_LIMIT_EXCEEDED") return "Wait a minute, then call again.";
+  const daily = error.code === "KEYLESS_DAILY_LIMIT";
+  if (!daily && !KEY_LIFTS.has(error.code)) return undefined;
+  const stop = !daily
+    ? ""
+    : error.retryAfterS
+      ? `Every Ironflow tool fails for ${waitFor(error.retryAfterS)}, so make no more Ironflow calls until then. `
+      : "Every Ironflow tool fails for now, so make no more Ironflow calls. ";
+  return `${stop}A free API key lifts this limit: ${DATA_KEY_PAGE} (to use it, ${connectStep(ctx.client, ctx.transport, DATA_URL)}).`;
 }
