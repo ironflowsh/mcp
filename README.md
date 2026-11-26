@@ -1,6 +1,7 @@
 # @ironflowsh/mcp
 
 [![ironflowsh/mcp MCP server](https://glama.ai/mcp/servers/ironflowsh/mcp/badges/score.svg)](https://glama.ai/mcp/servers/ironflowsh/mcp)
+[![Listed in Awesome Hyperliquid](https://awesome.re/mentioned-badge.svg)](https://github.com/Celebit-Labs/awesome-hyperliquid)
 
 MCP server for [Ironflow](https://ironflow.sh), the Hyperliquid data layer: Hyperliquid data from our own nodes. It gives Claude, Cursor and any MCP client Hyperliquid market data, wallet analytics and liquidation alerts. It covers native perps, HIP-3 builder markets, HIP-4 outcome markets and spot, with every fill since 25 May 2025.
 
