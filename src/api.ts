@@ -198,11 +198,11 @@ export class IronflowAPI {
     const retryNote = retryAfterS ? ` Retry after ${retryAfterS} s.` : "";
     try {
       const parsed = JSON.parse(text) as {
-        error?: { code?: string; message?: string; detail?: string; did_you_mean?: unknown; upgrade?: { url?: unknown } };
+        error?: { code?: string; message?: string; detail?: string; did_you_mean?: unknown; upgrade?: { url?: unknown }; teaser?: unknown };
       };
       const upgradeUrl = typeof parsed.error?.upgrade?.url === "string" ? parsed.error.upgrade.url : undefined;
       const code = parsed.error?.code;
-      const message = withSuggestions(parsed.error?.message ?? text, parsed.error?.did_you_mean);
+      const message = withTeaser(withSuggestions(parsed.error?.message ?? text, parsed.error?.did_you_mean), parsed.error?.teaser);
       const detail = parsed.error?.detail ? ` (${parsed.error.detail})` : "";
       this.record(res.status, code);
       if (code) {
@@ -565,6 +565,24 @@ const SUGGESTION_PATTERN = /^[A-Za-z0-9@#:/._-]{1,60}$/;
 // withSuggestions ends an error message with the markets the API's
 // did_you_mean names (an unknown market such as XAU gets xyz:GOLD-PERP and
 // PAXG-PERP), leaving out the ones the message already names.
+// withTeaser adds what Ironflow Edge sent Pro in the last 24 hours to a
+// refusal that carries the API's teaser (a signal read or signal alert
+// below Pro, since 2026-11-26: PRO_REQUIRED and PLAN_REQUIRED), when the
+// message does not say it already, and the public track record link. The
+// teaser holds counts and times only, never a call.
+export function withTeaser(message: string, teaser: unknown): string {
+  if (!teaser || typeof teaser !== "object") return message;
+  const t = teaser as { summary?: unknown; track_record?: unknown };
+  let out = message;
+  if (typeof t.summary === "string" && t.summary !== "" && !out.includes(t.summary)) {
+    out = `${out.replace(/[.\s]+$/, "")}. In the last 24 hours on Pro: ${t.summary}.`;
+  }
+  if (typeof t.track_record === "string" && /^https:\/\/ironflow\.sh\//.test(t.track_record) && !out.includes("ironflow.sh/signals")) {
+    out = `${out.replace(/\s+$/, "")} Every resolved call: ${t.track_record}`;
+  }
+  return out;
+}
+
 export function withSuggestions(message: string, didYouMean: unknown): string {
   if (!Array.isArray(didYouMean)) return message;
   const names = didYouMean

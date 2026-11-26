@@ -159,6 +159,39 @@ describe("IronflowAPI error upgrade link", () => {
   });
 });
 
+describe("IronflowAPI Pro teaser", () => {
+  const json = (body: unknown, init: ResponseInit = {}) =>
+    new Response(JSON.stringify(body), { ...init, headers: { "content-type": "application/json" } });
+  const teaser = {
+    window: "24h",
+    summary: "Liquidation Pressure: 32 calls in 24h, last resolved 2h ago; Flow alerts: 717 events in 24h, latest 3 min ago",
+    signals: [{ signal: "flow", calls_24h: 717 }],
+    track_record: "https://ironflow.sh/signals?utm_source=api&utm_medium=signals",
+  };
+
+  it("adds the 24-hour teaser and the track record to a signal alert refusal", async () => {
+    const message = "signal alerts (Liquidation Pressure, Opening Bell, Flow Ahead and Flow alerts to Telegram, Discord, Slack or a webhook) are on Pro, 499 USDC a month or 4,788 a year. Liquidation alerts work on every key";
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json({ error: { code: "PLAN_REQUIRED", message, teaser, upgrade: { plan: "pro", url: "https://ironflow.sh/upgrade?plan=pro" } } }, { status: 403 })));
+    const err = (await new IronflowAPI("http://api", "if_test").post("/v1/alerts", {}).catch((e: unknown) => e)) as ApiError;
+    expect(err.message).toBe(`Ironflow API error 403 PLAN_REQUIRED: ${message}. In the last 24 hours on Pro: ${teaser.summary}. Every resolved call: ${teaser.track_record}`);
+    expect(err.upgradeUrl).toBe("https://ironflow.sh/upgrade?plan=pro");
+  });
+
+  it("does not repeat a teaser the message already carries", async () => {
+    const message = `Flow alerts: part of Ironflow Edge, on Pro (499 USDC a month or 4,788 a year). In the last 24 hours: ${teaser.summary}. Get Pro: https://ironflow.sh/upgrade?plan=pro. Every resolved call and what followed: https://ironflow.sh/signals?utm_source=api`;
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json({ error: { code: "PRO_REQUIRED", message, teaser } }, { status: 402 })));
+    const err = (await new IronflowAPI("http://api").get("/v1/signals/flow").catch((e: unknown) => e)) as ApiError;
+    expect(err.message).toBe(`Ironflow API error 402 PRO_REQUIRED: ${message}`);
+    expect(err.code).toBe("PRO_REQUIRED");
+  });
+
+  it("leaves other errors as they are", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json({ error: { code: "TIER_LIMIT", message: "on paid plans", teaser: "nope" } }, { status: 403 })));
+    const err = (await new IronflowAPI("http://api", "if_test").post("/v1/alerts", {}).catch((e: unknown) => e)) as ApiError;
+    expect(err.message).toBe("Ironflow API error 403 TIER_LIMIT: on paid plans");
+  });
+});
+
 describe("IronflowAPI.listMarkets", () => {
   function urlOf(call: unknown): URL {
     return new URL((call as [string])[0]);
