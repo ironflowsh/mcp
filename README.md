@@ -99,7 +99,7 @@ To host the HTTP server yourself: `npx -y -p @ironflowsh/mcp ironflow-mcp-http` 
 
 - left out: matching liquidations within seconds, filtered by market, side, size and wallet (`address`). Every key, a free key allows one alert.
 - `position_risk`: a warning when a position of one of `addresses` gets within `threshold_pct` (1 to 50, default 10) of its liquidation price, and a last message if that wallet is liquidated. Explorer watches 10 wallets, Builder 200, Pro 1,000.
-- `liquidation_pressure`, `opening_bell` or `flow_ahead`: Ironflow Edge signals (a market side entering high liquidation pressure, the 09:29 New York preview of the HIP-3 stock perps, a TWAP with at least $250,000 left to execute). Pro.
+- `liquidation_pressure`, `opening_bell` or `flow_ahead`: Ironflow Edge signals (a market side entering high liquidation pressure, the 09:29 New York preview of the HIP-3 stock perps, a TWAP with at least $250,000 left to execute). Pro; below Pro the refusal says how many calls each signal sent Pro in the last 24 hours, with the public track record.
 
 A plan that does not include the kind asked for gets the API's refusal as it is, with the plan that does and its link. `list_liquidation_alerts`, `test_liquidation_alert` and `delete_liquidation_alert` manage every kind. Guide: [docs.ironflow.sh/guides/liquidation-alerts](https://docs.ironflow.sh/guides/liquidation-alerts).
 
