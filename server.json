@@ -2,17 +2,27 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.ironflowsh/hyperliquid",
   "title": "Ironflow: Hyperliquid data",
-  "description": "Hyperliquid market data, wallet analytics and liquidation alerts for AI agents.",
+  "description": "Hyperliquid liquidations, wallets, funding and SQL from Ironflow's own nodes. No key to start.",
   "repository": {
     "url": "https://github.com/ironflowsh/mcp",
     "source": "github"
   },
-  "version": "0.22.2",
+  "websiteUrl": "https://ironflow.sh/mcp",
+  "icons": [
+    {
+      "src": "https://ironflow.sh/apple-touch-icon.png",
+      "mimeType": "image/png",
+      "sizes": [
+        "256x256"
+      ]
+    }
+  ],
+  "version": "0.22.3",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@ironflowsh/mcp",
-      "version": "0.22.2",
+      "version": "0.22.3",
       "transport": {
         "type": "stdio"
       },
@@ -31,6 +41,10 @@
     {
       "type": "streamable-http",
       "url": "https://mcp.ironflow.sh/mcp"
+    },
+    {
+      "type": "streamable-http",
+      "url": "https://mcp.ironflow.sh/data"
     }
   ]
 }
