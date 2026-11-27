@@ -22,6 +22,10 @@ describe("readKey", () => {
   it("rejects a malformed key instead of silently going keyless", () => {
     expect(() => readKey(req({ authorization: "Bearer nope" }), url())).toThrow(HttpError);
   });
+  it("links the key page without a tracking tag on /data", () => {
+    expect(() => readKey(req({ authorization: "Bearer nope" }), new URL("http://localhost/data"))).toThrow(/ironflow\.sh\/key$/);
+    expect(() => readKey(req({ authorization: "Bearer nope" }), url())).toThrow(/key\?utm_source=mcp$/);
+  });
 });
 
 describe("clientIP", () => {

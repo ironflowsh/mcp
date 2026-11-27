@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "./api.js";
-import { connectStep, limitText, waitFor } from "./limits.js";
+import { connectStep, dataKeyStep, limitText, waitFor } from "./limits.js";
 import { qaClient } from "./server.js";
 
 describe("waitFor", () => {
@@ -85,5 +85,31 @@ describe("qaClient", () => {
     expect(qaClient("claude-code/2.1.0")).toBe("qa_check claude-code/2.1.0");
     expect(qaClient("qa_check first-call")).toBe("qa_check first-call");
     expect(qaClient(undefined)).toBe("qa_check");
+  });
+});
+
+describe("dataKeyStep", () => {
+  const ctx = { keyed: false, client: "Anthropic/ClaudeAI/1.0.0", transport: "http" as const };
+  const err = (code: string, retryAfterS?: number) => new ApiError(`Ironflow API error 402 ${code}: x`, 402, code, retryAfterS);
+
+  it("says every tool fails until the daily limit frees up, then the key page and the /data step", () => {
+    expect(dataKeyStep(err("KEYLESS_DAILY_LIMIT", 3600), ctx)).toBe(
+      "Every Ironflow tool fails for about an hour, so make no more Ironflow calls until then. A free API key lifts this limit: https://ironflow.sh/key (to use it, in Customize > Connectors remove Ironflow and add it again with the URL https://mcp.ironflow.sh/data?key=if_...)."
+    );
+  });
+
+  it("names no price, plan or tracked link", () => {
+    for (const code of ["KEYLESS_DAILY_LIMIT", "HISTORY_OUT_OF_RANGE", "TIER_FORBIDDEN", "QUERY_WINDOW_EXCEEDED"]) {
+      const step = dataKeyStep(err(code), { ...ctx, client: "cursor-vscode/1.0.0" }) ?? "";
+      expect(step, code).toContain("A free API key lifts this limit: https://ironflow.sh/key");
+      expect(step, code).not.toMatch(/utm_|\$\d|USDC|\b(Explorer|Builder|Pro)\b|credits a day|no card/);
+    }
+  });
+
+  it("only says to wait on a per-minute limit, and nothing for key holders or other errors", () => {
+    expect(dataKeyStep(err("RATE_LIMIT_EXCEEDED"), ctx)).toBe("Wait a minute, then call again.");
+    expect(dataKeyStep(err("KEYLESS_DAILY_LIMIT"), { ...ctx, keyed: true })).toBeUndefined();
+    expect(dataKeyStep(err("QUERY_ERROR"), ctx)).toBeUndefined();
+    expect(dataKeyStep(new Error("network"), ctx)).toBeUndefined();
   });
 });

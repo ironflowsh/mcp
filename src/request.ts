@@ -27,7 +27,7 @@ export function readKey(req: IncomingMessage, url: URL): string | undefined {
   if (!KEY_PATTERN.test(raw)) {
     throw new HttpError(
       401,
-      'Malformed API key: send "Authorization: Bearer if_...", or no key for keyless access. Free keys: https://ironflow.sh/key?utm_source=mcp'
+      `Malformed API key: send "Authorization: Bearer if_...", or no key for keyless access. Free keys: https://ironflow.sh/key${url.pathname === DATA_PATH ? "" : "?utm_source=mcp"}`
     );
   }
   return raw;

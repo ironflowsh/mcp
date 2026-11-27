@@ -104,7 +104,7 @@ To host the HTTP server yourself: `npx -y -p @ironflowsh/mcp ironflow-mcp-http` 
 
 A plan that does not include the kind asked for gets the API's refusal as it is, with the plan that does and its link. `list_liquidation_alerts`, `test_liquidation_alert` and `delete_liquidation_alert` manage every kind. Guide: [docs.ironflow.sh/guides/liquidation-alerts](https://docs.ironflow.sh/guides/liquidation-alerts).
 
-Called without a key, a tool that needs one answers with the free key link instead of calling the API. `https://mcp.ironflow.sh/data` serves only the 42 read-only data tools, without the alert tools.
+Called without a key, a tool that needs one answers with the free key link instead of calling the API. `https://mcp.ironflow.sh/data` serves only the 42 read-only data tools, without the alert tools. Its notices and errors are about the data only (a delay, a sample, a coverage gap, a limit and when it frees up), with no plans, prices or pay-per-call; a keyless refusal that a free key lifts says so and links https://ironflow.sh/key.
 
 **Prompts:** `biggest_liquidations`, `liquidation_map`, `market_movers` and `wallet_check` are ready-made starts. Claude Code shows them as slash commands; other clients list them in a prompt menu. Each asks only for read-only tools, on both addresses.
 

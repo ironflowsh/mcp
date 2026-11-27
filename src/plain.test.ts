@@ -48,10 +48,38 @@ describe("plainText", () => {
   });
 });
 
+describe("plainText, data caveats only", () => {
+  it("drops prices, Pro and tracked links", () => {
+    expect(plainText("Real-time liquidation streams, the liquidation map and SQL history: Explorer $49/mo ($39/mo yearly): https://ironflow.sh/upgrade?utm_source=api&plan=explorer")).toBe("");
+    expect(plainText("Flow Ahead is an Ironflow Edge signal. Rows are delayed 15 minutes.")).toBe("Rows are delayed 15 minutes.");
+    expect(plainText("Pro covers every fill since 25 May 2025. Data starts at 2026-11-25T00:00:00Z.")).toBe("Data starts at 2026-11-25T00:00:00Z.");
+    expect(plainText("Dedicated nodes from 1,250 USD per month: https://ironflow.sh/nodes")).toBe("");
+  });
+
+  it("drops pitches for the live streams and the free datasets, with the question that leads into them", () => {
+    expect(
+      plainText(
+        "Without a key, trades run 60 s behind live. Backfilling? Every trade since 3 October 2026 is a free Parquet file per UTC day: https://huggingface.co/datasets/ironflow/hyperliquid-trades?utm_source=api"
+      )
+    ).toBe("Without a key, trades run 60 s behind live.");
+    expect(
+      plainText("Use a narrower window. Polling? Move from to the last row's time after each answer, or open GET https://api.ironflow.sh/v1/trades/stream once.")
+    ).toBe("Use a narrower window.");
+  });
+
+  it("keeps a question that is not followed by a pitch", () => {
+    expect(plainText("Market \"BTC\" was read as BTC-PERP. Did you mean ETH? ETH-PERP has 3 rows.")).toBe("Market \"BTC\" was read as BTC-PERP. Did you mean ETH? ETH-PERP has 3 rows.");
+  });
+
+  it("keeps a clause's capital letter when the clause before it goes", () => {
+    expect(plainText("A free key gives 30 days; history is 1 day without one.")).toBe("History is 1 day without one.");
+  });
+});
+
 describe("plainError", () => {
   it("keeps the refusal and its timing, without the key offer", () => {
     expect(plainError(DAILY_LIMIT)).toBe(
-      "Error: Ironflow API error 402 KEYLESS_DAILY_LIMIT: keyless access allows 100 credits per rolling 24 hours from one IP; the next call is allowed in 3 h 20 min (Retry-After). A read costs 1 credit, analytics 5, SQL 10 and a stream 1 a minute: https://docs.ironflow.sh/concepts/rate-limits. Instead of polling, the live stream pushes each row as it lands for 1 credit a minute: GET https://api.ironflow.sh/v1/liquidations/stream"
+      "Error: Ironflow API error 402 KEYLESS_DAILY_LIMIT: keyless access allows 100 credits per rolling 24 hours from one IP; the next call is allowed in 3 h 20 min (Retry-After). A read costs 1 credit, analytics 5, SQL 10 and a stream 1 a minute: https://docs.ironflow.sh/concepts/rate-limits."
     );
   });
 
