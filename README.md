@@ -1,6 +1,7 @@
 # @ironflowsh/mcp
 
 [![ironflowsh/mcp MCP server](https://glama.ai/mcp/servers/ironflowsh/mcp/badges/score.svg)](https://glama.ai/mcp/servers/ironflowsh/mcp)
+[![Ironflow MCP connector](https://glama.ai/mcp/connectors/io.github.ironflowsh/hyperliquid/badges/score.svg)](https://glama.ai/mcp/connectors/io.github.ironflowsh/hyperliquid)
 [![Listed in Awesome Hyperliquid](https://awesome.re/mentioned-badge.svg)](https://github.com/Celebit-Labs/awesome-hyperliquid)
 
 MCP server for [Ironflow](https://ironflow.sh), the Hyperliquid data layer: Hyperliquid data from our own nodes. It gives Claude, Cursor and any MCP client Hyperliquid market data, wallet analytics and liquidation alerts. It covers native perps, HIP-3 builder markets, HIP-4 outcome markets and spot, with every fill since 25 May 2025.
@@ -14,7 +15,7 @@ No API key needed to start: keyless calls get 30 requests a minute, 100 credits 
 
 ## Install
 
-The hosted server needs no install and no key: `https://mcp.ironflow.sh/mcp` (Streamable HTTP).
+The hosted server needs no install and no key: `https://mcp.ironflow.sh/mcp` (Streamable HTTP, 46 tools). For the 42 read-only data tools without alerts, use `https://mcp.ironflow.sh/data`.
 
 [![Add to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/install-mcp?name=ironflow&config=eyJ1cmwiOiJodHRwczovL21jcC5pcm9uZmxvdy5zaC9tY3AifQ%3D%3D)
 [![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_Ironflow-0098FF?logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect?url=vscode%3Amcp%2Finstall%3F%257B%2522name%2522%253A%2522ironflow%2522%252C%2522type%2522%253A%2522http%2522%252C%2522url%2522%253A%2522https%253A%252F%252Fmcp.ironflow.sh%252Fmcp%2522%257D)
@@ -41,6 +42,16 @@ claude mcp add --transport http ironflow https://mcp.ironflow.sh/mcp
 
 ```bash
 code --add-mcp '{"name":"ironflow","type":"http","url":"https://mcp.ironflow.sh/mcp"}'
+```
+
+**Cline**: open MCP Servers, Configure, and add this to `cline_mcp_settings.json`:
+
+```json
+{
+  "mcpServers": {
+    "ironflow": { "type": "streamableHttp", "url": "https://mcp.ironflow.sh/data" }
+  }
+}
 ```
 
 **Local server (stdio)**: `npx -y @ironflowsh/mcp`, see [Local server](#local-server).
